@@ -1,0 +1,19 @@
+spring:
+  application:
+    name: bringmycart-backend
+  profiles:
+    default: dev
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+
+logging:
+  level:
+    root: INFO
+    com.bringmycart.bmc: INFO
