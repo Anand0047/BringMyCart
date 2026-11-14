@@ -15,6 +15,7 @@
 !.env.example
 application-local.yml
 application-local.yaml
+backend/.local-keys/
 
 # Logs and temporary files
 *.log
