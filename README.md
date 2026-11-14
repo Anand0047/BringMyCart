@@ -1,1 +1,0 @@
-Personal Project: BringMyCart is a smart wishlist tool that lets users save Multiple E-commerce favourite products via a browser extension, fetches details using an API, and displays them on a personalized dashboard (React.js + Spring Boot + MySQL).
