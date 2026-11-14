@@ -7,3 +7,11 @@ spring:
     hibernate:
       ddl-auto: none
     open-in-view: false
+  flyway:
+    enabled: true
+
+bmc:
+  auth:
+    private-key-location: ${JWT_PRIVATE_KEY_LOCATION:}
+    public-key-location: ${JWT_PUBLIC_KEY_LOCATION:}
+    refresh-cookie-secure: ${JWT_REFRESH_COOKIE_SECURE:false}

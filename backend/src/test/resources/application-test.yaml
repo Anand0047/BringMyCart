@@ -7,3 +7,11 @@ spring:
 logging:
   level:
     org.testcontainers: WARN
+
+bmc:
+  auth:
+    issuer: test-bringmycart
+    audience: test-bringmycart-api
+    refresh-cookie-secure: false
+    rate-limit-max-attempts: 3
+    rate-limit-window-minutes: 15
