@@ -1,0 +1,28 @@
+#!/bin/sh
+set -eu
+
+basedir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+properties="$basedir/.mvn/wrapper/maven-wrapper.properties"
+distribution_url=$(sed -n 's/^distributionUrl=//p' "$properties")
+archive_name=${distribution_url##*/}
+distribution_name=${archive_name%.zip}
+distribution_name=${distribution_name%-bin}
+maven_user_home=${MAVEN_USER_HOME:-"$HOME/.m2"}
+distribution_root="$maven_user_home/wrapper/dists/${archive_name%.zip}"
+maven_home=$(find "$distribution_root" -mindepth 2 -maxdepth 2 -type f -path '*/bin/mvn' -print -quit 2>/dev/null | sed 's#/bin/mvn$##' || true)
+if [ -z "$maven_home" ]; then
+  hash=$(printf '%s' "$distribution_url" | md5sum | awk '{print $1}')
+  maven_home="$distribution_root/$hash/$distribution_name"
+fi
+
+if [ ! -x "$maven_home/bin/mvn" ]; then
+  temporary_archive=$(mktemp)
+  temporary_dir=$(mktemp -d)
+  trap 'rm -f "$temporary_archive"; rm -rf "$temporary_dir"' EXIT
+  curl -fsSL "$distribution_url" -o "$temporary_archive"
+  unzip -q "$temporary_archive" -d "$temporary_dir"
+  mkdir -p "$(dirname "$maven_home")"
+  mv "$temporary_dir/$distribution_name" "$maven_home"
+fi
+
+exec "$maven_home/bin/mvn" "$@"
