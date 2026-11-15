@@ -1,0 +1,43 @@
+CREATE TABLE saved_products (
+    id UUID PRIMARY KEY,
+    user_id UUID NOT NULL,
+    asin VARCHAR(10) NOT NULL,
+    parent_asin VARCHAR(10),
+    original_url TEXT NOT NULL,
+    canonical_url TEXT NOT NULL,
+    title TEXT,
+    brand TEXT,
+    image_url TEXT,
+    initial_price NUMERIC(12, 2),
+    final_price NUMERIC(12, 2),
+    currency VARCHAR(3) NOT NULL DEFAULT 'INR',
+    discount_percentage NUMERIC(5, 2),
+    rating NUMERIC(3, 2),
+    reviews_count BIGINT,
+    availability VARCHAR(100),
+    enrichment_status VARCHAR(20) NOT NULL,
+    review_summary JSONB,
+    review_topics JSONB,
+    metadata_fetched_at TIMESTAMPTZ,
+    provider_fetched_at TIMESTAMPTZ,
+    enrichment_requested_at TIMESTAMPTZ,
+    enrichment_started_at TIMESTAMPTZ,
+    enrichment_attempts INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
+    CONSTRAINT fk_saved_products_user FOREIGN KEY (user_id) REFERENCES users (id),
+    CONSTRAINT uk_saved_products_user_asin UNIQUE (user_id, asin),
+    CONSTRAINT ck_saved_products_asin CHECK (asin ~ '^[A-Z0-9]{10}$'),
+    CONSTRAINT ck_saved_products_parent_asin CHECK (parent_asin IS NULL OR parent_asin ~ '^[A-Z0-9]{10}$'),
+    CONSTRAINT ck_saved_products_initial_price CHECK (initial_price IS NULL OR initial_price >= 0),
+    CONSTRAINT ck_saved_products_final_price CHECK (final_price IS NULL OR final_price >= 0),
+    CONSTRAINT ck_saved_products_discount CHECK (discount_percentage IS NULL OR (discount_percentage >= 0 AND discount_percentage <= 100)),
+    CONSTRAINT ck_saved_products_rating CHECK (rating IS NULL OR (rating >= 0 AND rating <= 5)),
+    CONSTRAINT ck_saved_products_reviews_count CHECK (reviews_count IS NULL OR reviews_count >= 0),
+    CONSTRAINT ck_saved_products_enrichment_status CHECK (enrichment_status IN ('PENDING', 'PROCESSING', 'COMPLETED', 'FAILED')),
+    CONSTRAINT ck_saved_products_enrichment_attempts CHECK (enrichment_attempts >= 0)
+);
+
+CREATE INDEX idx_saved_products_user_created_at ON saved_products (user_id, created_at DESC, id DESC);
+CREATE INDEX idx_saved_products_recovery ON saved_products (enrichment_status, enrichment_started_at)
+    WHERE enrichment_status IN ('PENDING', 'PROCESSING');
