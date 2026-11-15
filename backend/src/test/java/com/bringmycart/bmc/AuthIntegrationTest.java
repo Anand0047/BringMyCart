@@ -179,6 +179,28 @@ class AuthIntegrationTest {
     }
 
     @Test
+    void sequentialBrowserBootstrapsCanRotateTheLatestRefreshCookieRepeatedly() throws Exception {
+        String email = uniqueEmail();
+        register(email);
+        MvcResult login = login(email);
+        String csrfToken = cookieValue(login, "XSRF-TOKEN");
+        String refresh = cookieValue(login, "bmc_refresh");
+
+        for (int bootstrap = 0; bootstrap < 3; bootstrap++) {
+            MvcResult rotation = mockMvc.perform(refreshRequest(refresh, csrfToken))
+                .andExpect(status().isOk())
+                .andExpect(cookie().httpOnly("bmc_refresh", true))
+                .andReturn();
+            String cookieHeader = rotation.getResponse().getHeaders("Set-Cookie").stream()
+                .filter(headerValue -> headerValue.startsWith("bmc_refresh="))
+                .findFirst()
+                .orElseThrow();
+            assertThat(cookieHeader).contains("Path=/api/v1/auth", "SameSite=Strict");
+            refresh = cookieValue(rotation, "bmc_refresh");
+        }
+    }
+
+    @Test
     void refreshRequiresCsrfProtectionForCookieAuthentication() throws Exception {
         String email = uniqueEmail();
         register(email);
@@ -190,6 +212,33 @@ class AuthIntegrationTest {
             .andExpect(status().isForbidden());
         mockMvc.perform(refreshRequest(refresh, csrfToken, "incorrect-csrf-token"))
             .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void csrfInitializationIssuesCookieBeforeTheFirstCookieAuthenticatedRefresh() throws Exception {
+        String email = uniqueEmail();
+        register(email);
+        MvcResult login = login(email);
+        String refresh = cookieValue(login, "bmc_refresh");
+
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                .cookie(new MockCookie("bmc_refresh", refresh)))
+            .andExpect(status().isForbidden());
+
+        MvcResult csrfInitialization = mockMvc.perform(get("/api/v1/auth/csrf"))
+            .andExpect(status().isNoContent())
+            .andReturn();
+        String csrfToken = cookieValue(csrfInitialization, "XSRF-TOKEN");
+        String csrfCookie = csrfInitialization.getResponse().getHeaders("Set-Cookie").stream()
+            .filter(headerValue -> headerValue.startsWith("XSRF-TOKEN="))
+            .findFirst()
+            .orElseThrow();
+        // MockMvc's MockHttpServletResponse models Servlet Cookie attributes and
+        // omits SameSite; verify that attribute on the real refresh ResponseCookie below.
+        assertThat(csrfCookie).contains("Path=/");
+
+        mockMvc.perform(refreshRequest(refresh, csrfToken))
+            .andExpect(status().isOk());
     }
 
     @Test

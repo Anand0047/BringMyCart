@@ -1,6 +1,6 @@
 # BringMyCart 2.0 Architecture
 
-**Status:** Approved in principle; Phase 1 backend foundation implemented. Later phases require their own approval.  
+**Status:** Approved in principle; Phases 1 and 2 are implemented, and the approved Phase 3 saved-products backend and customer dashboard are implemented pending final verification/review. Later phases require their own approval.
 **Requirements source:** [SRS](SRS.md). This document does not lift its affiliate-policy or attribution blockers.
 
 ## 1. Architecture Overview
@@ -49,7 +49,7 @@ backend/
     retailer/ ...  affiliate/ ...  rewards/ ...  giftcards/ ...  adminaudit/ ...
     shared/ {security, error, persistence}       # technical-only
   src/test/java/...
-web/                       # React + Vite customer/admin app
+frontend/                  # React + TypeScript + Vite customer app
   src/{features, routes, api, components, auth, test}
 extension/                 # Manifest V3 source and tests
 docs/{SRS.md, ARCHITECTURE.md}
@@ -61,7 +61,7 @@ Organizing only by technical layer (`controller`, `service`, `repository`) hides
 
 ### Recommendation
 
-Use Spring Security with short-lived JWT access tokens, refresh-token/session records that can be revoked, and role-based authorization (`CUSTOMER`, `ADMIN`) enforced at endpoint and ownership-policy levels. Exact lifetimes, issuer/audience, refresh rotation, logout semantics, account recovery, and key provider are **TBD**. Select an exact Spring Boot 3.x version only after verifying current support and Java 21 compatibility; a newer major should require approval because of migration/training risk.
+Use Spring Security with short-lived JWT access tokens, refresh-token/session records that can be revoked, and role-based authorization (`CUSTOMER`, `ADMIN`) enforced at endpoint and ownership-policy levels. The implemented baseline uses Spring Boot 3.5.6 with Java 21; verify newer supported Spring Boot 3.x patches before an approved upgrade, and do not move to Spring Boot 4.x without approval. Exact account-recovery and key-provider operations remain **TBD**.
 
 For the React website, prefer short-lived access tokens held only in memory and refresh/session tokens in `HttpOnly`, `Secure`, appropriately scoped `SameSite` cookies. This reduces XSS token theft relative to persistent localStorage. It requires deliberate CSRF protection for cookie-bearing requests (origin checks plus CSRF strategy) and narrow CORS allowlists. A localStorage-based access/refresh-token design is simpler to implement but is not recommended because injected script can persistently exfiltrate tokens. JWT validation checks signature, expiry, issuer, audience, intended client, and the applicable revocation/session state; signing keys rotate and remain outside source. Passwords use a modern adaptive one-way hash. Login, registration, recovery, and refresh are rate-limited; failures are generic and audited without secrets.
 
@@ -91,7 +91,9 @@ Logout revokes the server-side refresh/session record; short access-token expiry
 
 Essential fields: retailer identifier and normalized original URL; a save relationship with customer and timestamp. Optional snapshots are ASIN, title, image URL, price, and currency—only if legally and technically permitted and actually available. Missing values remain absent, never fabricated. Validate `amazon.in` hosts, canonicalize known URL noise carefully, extract ASIN only under approved rules, and retain original URL for customer navigation. Revalidate server-side; extension detection is only a convenience.
 
-**Recommendation:** use a retailer-product reference plus a user saved-product relationship. A shared reference contains only permitted retailer-level data: canonical/original product identity and an optional, non-user-specific metadata snapshot. It must not contain customer identifiers, saved time, private notes, customer-specific availability, reward state, click history, or any field derived from another user's activity. The relationship owns the customer ID, save time, relationship state, and all user-specific future attributes. Every customer query must begin with the authenticated user's relationship and join the shared reference only after ownership filtering; APIs must never expose other relationship IDs, save counts, owners, or activity through the shared record. This avoids duplication and enables future retailers. Trade-off: identity/normalization rules need careful design. A single per-user record is simpler but duplicates data and complicates future change. For MVP, allow a uniqueness rule on `(user, retailer, canonical product identity)` when identity is trustworthy; otherwise fall back to normalized URL and record the limitation.
+**Implemented MVP choice:** a single user-owned `saved_products` record contains the customer relationship, exact child ASIN, submitted/canonical URLs, and permitted metadata snapshot. PostgreSQL enforces `UNIQUE(user_id, asin)`, so the same customer cannot save the same selected variant twice while different customers may independently save that ASIN. Every query is owner-scoped; no API exposes another user's record, saved time, or metadata through a shared product record. This intentionally permits separate Bright Data requests when different customers save the same ASIN.
+
+**Future recommendation:** a shared retailer-product reference plus a user saved-product relationship may reduce duplicated permitted metadata when a concrete multi-customer/multi-retailer use case justifies it. A shared reference must contain only retailer-level data, never customer IDs, saved time, private notes, activity, reward state, or other user-derived data. Ownership filtering must begin from the authenticated user's relationship. That normalization is not implemented in Phase 3.
 
 ```mermaid
 sequenceDiagram
@@ -161,8 +163,8 @@ The points conversion and redemption rules remain TBD; no redemption proceeds wi
 | --- | --- | --- |
 | User, Role, UserRole | Account and RBAC; unique normalized email; credential data isolated. | Identity |
 | AuthSession/RefreshToken | Revocable, hashed refresh/session references; expiry and device metadata. | Identity |
-| RetailerProduct | Retailer, canonical/original URL, optional ASIN/snapshot; unique retailer+canonical identity where reliable. | Saved Products |
-| SavedProduct | User-to-product save; unique user+product/identity; index user+saved time. | Saved Products |
+| SavedProduct (implemented MVP) | User-owned exact-variant Amazon save and permitted snapshot; `UNIQUE(user_id, asin)`, user/time listing index, owner-scoped APIs. | Saved Products |
+| RetailerProduct (future option) | Shared retailer-level identity/metadata only, if later justified; never holds user-derived information. | Saved Products |
 | RewardAccount | Per-user transactionally consistent available-balance projection/version; rebuildable from ledger. | Rewards |
 | RewardLedgerEntry | Immutable transaction type, signed amount, eligibility lifecycle, source/reference, correlation/idempotency and external dedupe keys; no rewrites. | Rewards |
 | GiftCardProvider/Option | Provider and configured denomination/rule reference. | Gift Cards |
@@ -233,13 +235,13 @@ Retailer Integration uses retailer-specific adapters behind a stable validation/
 
 | Decision | Recommendation | Alternatives | Rationale / trade-off | Status |
 | --- | --- | --- | --- | --- |
-| Runtime | Java 21, Spring Boot exact version TBD | Older Java / newer major Boot | Approved stack; verify current supported Boot 3.x first. | Confirmed / version TBD |
+| Runtime | Java 21, Spring Boot 3.5.6 | Older Java / newer major Boot | Implemented baseline; verify a newer supported Boot 3.x patch before an approved upgrade. | Confirmed baseline |
 | Architecture | Modular monolith | Microservices | Strong transactions and lower ops burden; less independent scaling. | Confirmed |
 | Persistence | PostgreSQL + JPA/Hibernate | NoSQL / direct SQL only | Relational constraints and transactions suit assets/ledger; JPA discipline needed. | Confirmed |
 | Web | React + Vite | Other SPA tooling | Approved, lightweight tooling. | Confirmed |
 | Auth | JWT access + revocable refresh/session design | Long-lived JWT/localStorage | Better logout/revocation/XSS posture; more server state. | Recommended; details TBD |
 | Redemption | One transaction + row locks + idempotency | Eventual consistency/queue | Correctness for monetary assets; lock contention at high scale. | Recommended |
-| Product model | Shared retailer reference + saved relationship | Per-user snapshot only | Reduces duplication/future ready; normalization complexity. | Recommended |
+| Product model | User-owned saved-product record for MVP | Shared retailer reference + relationship | Simpler isolation and exact-variant uniqueness now; duplicates permitted metadata/provider requests across customers. | Implemented MVP |
 | Affiliate rewards | Disabled until proof | Infer clicks as purchases | Preserves compliance and integrity; delays monetization. | Blocked |
 
 ## 19. Requirement Traceability
@@ -253,7 +255,7 @@ Retailer Integration uses retailer-specific adapters behind a stable validation/
 | Gift-card inventory/redemption | FR-008–010, NFR-001–005/007 |
 | React/extension clients | FR-002–005, FR-009–011, NFR-008/009 |
 
-Clarification is still required for Spring Boot version, auth/extension callback details, metadata permission/method, points and redemption rules, operational targets, privacy retention, and all affiliate permissions/attribution.
+Clarification is still required for extension callback details, review-summary metadata permission/retention, points and redemption rules, operational targets, privacy retention, and all affiliate permissions/attribution.
 
 ## 20. Proposed Implementation Roadmap
 
@@ -269,6 +271,8 @@ Clarification is still required for Spring Boot version, auth/extension callback
 | 8 | Atomic redemption and security hardening. | Phase 6–7; FR-009, NFR-001–005 | Concurrency, idempotency, rollback, recovery tests pass. |
 | 9 | Approved affiliate integration only after verification. | Resolved FR-006/007 blockers | Policy, attribution, disclosure, integration evidence approved. |
 | 10 | Production readiness/deployment. | Operational decisions; NFR-010 | Backups, monitoring, security review, staging acceptance complete. |
+
+Roadmap note: the approved Phase 3 scope absorbed the customer dashboard that the earlier plan listed separately as Phase 4. This is a status clarification only; it does not authorize the Chrome extension or any later phase.
 
 This roadmap is planning only and grants no implementation authorization.
 
@@ -289,3 +293,13 @@ The browser model is short-lived bearer access tokens plus an HttpOnly, Secure-i
 Runtime JWT keys are external PEM resources. The initial key identifier is `bmc-current`; rotation requires serving/accepting the prior public key during a controlled overlap window, then retiring it after all issued access tokens expire. Key distribution, rotation operations, exact token lifetime changes, and the first-admin operational runbook remain approval-required decisions. Public registration cannot grant ADMIN.
 
 The identity schema is owned by Flyway migration `V1__create_identity_tables.sql`; Hibernate schema updates remain disabled. Refresh replay handling locks the presented row, atomically revokes the token family on detected reuse, and can reject a legitimate concurrent refresh as a security trade-off. The in-memory bounded rate limiter is suitable only for one application instance; multi-instance deployment requires a shared, approved limiter.
+
+## 23. Phase 3 Saved-Products and Customer Dashboard Status
+
+Phase 3 implements the approved Amazon India saved-products scope. The backend accepts only validated HTTPS `amazon.in` `/dp/{asin}` and `/gp/product/{asin}` URLs, preserves the exact ten-character child ASIN, retains the submitted URL, and creates a canonical `https://www.amazon.in/dp/{asin}` URL. The implemented MVP uses one customer-owned `saved_products` row per exact ASIN, protected by `UNIQUE(user_id, asin)`, rather than the future shared retailer-reference model described above. Ownership-scoped lookup, list, delete, and refresh operations prevent cross-customer access. A consequence intentionally accepted for MVP is that different customers saving the same ASIN can cause separate provider requests.
+
+Flyway migrations `V2` through `V4` create the saved-product record and its enrichment, recovery, and manual-refresh fields. The bounded asynchronous worker is dispatched only after the save or refresh transaction commits; it performs short state updates around, not during, the external Bright Data call. It records only sanitized failure categories, preserves prior successful metadata when a manual refresh fails, and has conservative recovery disabled by default. There is no scheduled price monitoring and completed products are never automatically refreshed.
+
+The React/TypeScript/Vite dashboard implements login, registration, session restoration, protected dashboard routes, saved-product save/list/delete, pagination, pending/failed metadata states, and owner-requested refresh/retry. Access tokens remain memory-only. The browser first calls the CSRF initialization endpoint before its cookie-backed refresh request; refresh cookies remain HttpOnly and refresh/logout retain CSRF protection. The user manually verified repeated browser reloads preserve an authenticated dashboard session after this bootstrap change.
+
+The Bright Data adapter is backend-only and maps permitted observed metadata: exact ASIN, optional parent ASIN, title, brand, image, original/final price, derived discount, currency, rating, review count, availability, and provider timestamp. The current schema reserves `review_summary` and `review_topics` JSONB columns, but Phase 3 deliberately neither persists nor exposes Bright Data `customers_say` or `customers_say_topics`. The Amazon Reviews modal remains pending until account-specific Bright Data storage and usage permission is verified. Aggregate rating and review count are distinct, implemented metadata when available.

@@ -50,6 +50,16 @@ public class AuthController {
         return ResponseEntity.ok(result.response());
     }
 
+    /**
+     * Establishes the readable double-submit CSRF cookie before a browser sends
+     * its first cookie-authenticated POST. The Spring Security filter creates
+     * the token; the value is intentionally not returned in this API body.
+     */
+    @GetMapping("/csrf")
+    public ResponseEntity<Void> initializeCsrf() {
+        return ResponseEntity.noContent().build();
+    }
+
     @PostMapping("/refresh")
     public ResponseEntity<AuthResponse> refresh(@CookieValue(name = REFRESH_COOKIE, required = false) String refreshToken,
                                                  HttpServletResponse servletResponse) {

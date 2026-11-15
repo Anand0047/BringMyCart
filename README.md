@@ -1,13 +1,13 @@
 # BringMyCart 2.0
 
-BringMyCart is a centralized saved-product and rewards platform. Phase 2 now provides the backend identity foundation: customer registration and login, JWT access tokens, refresh-token rotation/logout, CUSTOMER/ADMIN authorization, and Flyway-managed identity storage. Saved products, retailer integration, affiliate links, rewards, gift cards, frontend, and Chrome extension behavior remain unimplemented.
+BringMyCart is a centralized saved-product and rewards platform. The current Phase 3 implementation provides the Phase 2 identity foundation, Amazon India saved-product workflows, and a React customer dashboard: strict URL validation, ownership-scoped saved products, asynchronous Bright Data metadata enrichment, manual metadata refresh, and product-list management. Affiliate links, rewards, gift cards, the Chrome extension, and Amazon review-summary display remain unimplemented or blocked.
 
 ## Confirmed stack
 
 - Java 21 (Temurin `21.0.13` for local Windows development)
 - Spring Boot `3.5.6`, Maven Wrapper, PostgreSQL 17, Spring Data JPA/Hibernate
 - Spring Boot Actuator, JUnit 5, and Testcontainers PostgreSQL
-- Future clients: React.js + Vite and Chrome Manifest V3
+- React.js + TypeScript + Vite customer dashboard; Chrome Manifest V3 remains future work
 
 Spring Boot 3.5.6 is the approved provisional version. Verify the current supported Spring Boot 3.x patch online before any upgrade; do not upgrade to Spring Boot 4.x without approval.
 
@@ -19,9 +19,10 @@ backend/
   src/main/resources/                  shared/dev config and Flyway migrations
   src/test/                            Testcontainers PostgreSQL integration tests
 docs/                                  SRS, architecture, and phase reports
+frontend/                              React + TypeScript + Vite customer dashboard
 ```
 
-The backend follows the approved feature-first modular-monolith boundaries: `identity`, `savedproducts`, `retailer`, `affiliate`, `rewards`, `giftcards`, and `adminaudit`. Business types are intentionally absent until their approved phases.
+The backend follows the approved feature-first modular-monolith boundaries: `identity`, `savedproducts`, `retailer`, `affiliate`, `rewards`, `giftcards`, and `adminaudit`. Identity and saved-products contain implemented types; unapproved business modules remain intentionally absent.
 
 ## PostgreSQL development database
 
@@ -149,15 +150,63 @@ Flyway owns the identity schema. `V1__create_identity_tables.sql` creates `users
 | `POST /api/v1/auth/login` | Return a 15-minute access token and set an HttpOnly refresh cookie. |
 | `POST /api/v1/auth/refresh` | Rotate the 7-day refresh token; requires CSRF protection for browser use. |
 | `POST /api/v1/auth/logout` | Revoke the current refresh token and clear its cookie. |
+| `GET /api/v1/auth/csrf` | Initialize the readable CSRF cookie before a browser cookie-authenticated POST. |
 | `GET /api/v1/auth/me` | Verify bearer-token authentication. |
 | `GET /api/v1/identity/admin/ping` | Minimal ADMIN-only authorization verification endpoint. |
 
 Access tokens remain valid until their expiration. Logout revokes refresh tokens only; it does not falsely claim immediate stateless access-token revocation. Refresh tokens are random, stored only as SHA-256 hashes, rotated atomically, and their token family is revoked when a rotated token is replayed.
 
-For browser clients, refresh tokens use `HttpOnly`, `SameSite=Strict` cookies scoped to `/api/v1/auth`; CSRF remains enabled for refresh and logout. Login and registration are CSRF-exempt because they do not rely on an existing authentication cookie. Future extension authentication must use the architecture's registered callback, PKCE, state/nonce, one-time authorization-code flow—not page scripts or URL tokens.
+For browser clients, refresh tokens use `HttpOnly`, `SameSite=Strict` cookies scoped to `/api/v1/auth`; CSRF remains enabled for refresh and logout. The React bootstrap first requests `GET /api/v1/auth/csrf`, then submits the cookie/header double-submit pair for refresh. Login and registration are CSRF-exempt because they do not rely on an existing authentication cookie. Future extension authentication must use the architecture's registered callback, PKCE, state/nonce, one-time authorization-code flow—not page scripts or URL tokens.
 
 Developer verification before the final targeted transaction-hardening change completed with all 15 tests passing:
 
 ```cmd
 backend\mvnw.cmd -f backend\pom.xml clean verify
 ```
+
+## Saved-product enrichment and manual refresh
+
+Saving or manually refreshing a product returns before Bright Data is contacted. The backend persists a `PENDING` record, then submits bounded background work only after the save or refresh transaction commits. Product metadata calls require `BRIGHTDATA_API_KEY`; keep it only in the backend environment. The API key and raw provider errors are never stored or returned.
+
+```cmd
+set "BRIGHTDATA_API_KEY=<local key>"
+set "BRIGHTDATA_DATASET_ID=gd_l7q7dkf244hwjntr0"
+```
+
+`POST /api/v1/saved-products/{id}/refresh` is owner-scoped, returns `202 Accepted`, and has a five-minute default per-product cooldown (`PRODUCT_ENRICHMENT_MANUAL_REFRESH_COOLDOWN`). It preserves the last successful metadata until a replacement fetch succeeds. A `PENDING` or `PROCESSING` record returns a conflict rather than spending another provider credit.
+
+Crash and executor-saturation recovery is disabled by default. To enable conservative recovery of stale or eligible transiently failed jobs, set `PRODUCT_ENRICHMENT_RECOVERY_ENABLED=true`; its default interval is 15 minutes, stale threshold is 30 minutes, and batch size is 10. It never refreshes `COMPLETED` products and is not price monitoring. A restart can therefore leave a product `PENDING` or `PROCESSING` until this explicit recovery option is enabled. Automated provider retries remain bounded by `PRODUCT_ENRICHMENT_MAX_ATTEMPTS` (default `2`) and apply only to timeout, rate-limit, and temporary provider failures.
+
+Amazon review summaries and sentiment topics are not persisted until Bright Data's applicable storage and usage terms are verified.
+
+## React dashboard
+
+The React + TypeScript + Vite dashboard is in `frontend/`. It retains access tokens only in memory and relies on the existing HttpOnly refresh cookie for session restoration. Bright Data credentials never belong in frontend environment variables.
+
+Use Node.js `24.15.0` or newer for the current frontend dependency set. Node `24.3.0` can install packages but reports engine warnings from `jsdom` and `w3c-xmlserializer`; do not suppress those warnings.
+
+```cmd
+cd frontend
+copy .env.example .env.local
+npm.cmd install
+npm.cmd run dev
+```
+
+Set the backend's existing CORS allowlist before starting the Spring Boot application locally:
+
+```cmd
+set "CORS_ALLOWED_ORIGINS=http://localhost:5173"
+```
+
+The default `VITE_API_BASE_URL` is `http://localhost:8080/api/v1`. For browser-cookie development over local HTTP, use the existing backend development setting `JWT_REFRESH_COOKIE_SECURE=false`; production requires HTTPS and a secure refresh cookie. The frontend sends `X-XSRF-TOKEN` from the browser's `XSRF-TOKEN` cookie on state-changing requests. Before its first cookie-authenticated refresh, it calls `GET /api/v1/auth/csrf`; the readable CSRF cookie is not an access credential.
+
+Run frontend checks after dependencies install:
+
+```cmd
+npm.cmd run test
+npm.cmd run build
+```
+
+### Amazon reviews status
+
+Phase 3 displays the provider-observed aggregate rating and review count when available. The database has reserved JSONB fields for a future review summary and topic data, but the enrichment pipeline deliberately does **not** persist Bright Data `customers_say` or `customers_say_topics`. The Amazon Reviews popup/modal and review-summary display are pending verification of account-specific Bright Data metadata storage and usage permissions. Until that verification is recorded, the dashboard must show neither fabricated review content nor stored provider summaries.
