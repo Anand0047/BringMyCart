@@ -30,12 +30,13 @@ bmc:
     recovery-interval: ${PRODUCT_ENRICHMENT_RECOVERY_INTERVAL:PT15M}
     stale-after: ${PRODUCT_ENRICHMENT_STALE_AFTER:PT30M}
     recovery-batch-size: ${PRODUCT_ENRICHMENT_RECOVERY_BATCH_SIZE:10}
-  bright-data:
-    base-url: ${BRIGHTDATA_BASE_URL:https://api.brightdata.com}
-    dataset-id: ${BRIGHTDATA_DATASET_ID:gd_l7q7dkf244hwjntr0}
-    api-key: ${BRIGHTDATA_API_KEY:}
-    connect-timeout: ${BRIGHTDATA_CONNECT_TIMEOUT:5s}
-    read-timeout: ${BRIGHTDATA_READ_TIMEOUT:30s}
+  axesso:
+    base-url: ${AXESSO_BASE_URL:https://axesso-axesso-amazon-data-service-v1.p.rapidapi.com}
+    host: ${AXESSO_RAPIDAPI_HOST:axesso-axesso-amazon-data-service-v1.p.rapidapi.com}
+    api-key: ${AXESSO_RAPIDAPI_KEY:}
+    connect-timeout: ${AXESSO_CONNECT_TIMEOUT:5s}
+    read-timeout: ${AXESSO_READ_TIMEOUT:30s}
+    monthly-request-limit: ${AXESSO_MONTHLY_REQUEST_LIMIT:100}
   auth:
     issuer: ${JWT_ISSUER:bringmycart}
     audience: ${JWT_AUDIENCE:bringmycart-api}

@@ -1,12 +1,16 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
-import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { ShoppingBag } from 'lucide-react';
-import { errorMessage } from '../api/client';
+import { PasswordField } from '../components/PasswordField';
+import { authenticationErrorMessage } from '../api/client';
 import { useAuth } from '../auth/useAuth';
 
 export function LoginPage() {
   const { login, session, restoring } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const requestedReturnTo = (location.state as { returnTo?: string } | null)?.returnTo;
+  const returnTo = requestedReturnTo?.startsWith('/') && !requestedReturnTo.startsWith('//') ? requestedReturnTo : '/dashboard';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -16,15 +20,15 @@ export function LoginPage() {
 
   async function submit(event: FormEvent) {
     event.preventDefault(); setError(null); setSubmitting(true);
-    try { await login(email, password); navigate('/dashboard', { replace: true }); }
-    catch (exception) { setError(errorMessage(exception, 'Unable to sign in. Check your credentials and try again.')); }
+    try { await login(email, password); navigate(returnTo, { replace: true }); }
+    catch (exception) { setError(authenticationErrorMessage(exception, 'login')); }
     finally { setSubmitting(false); }
   }
 
   return <AuthShell title="Welcome back" subtitle="Your saved Amazon India products are waiting.">
     <form onSubmit={submit} className="space-y-4">
       <Field label="Email" value={email} onChange={setEmail} type="email" autoComplete="email" />
-      <Field label="Password" value={password} onChange={setPassword} type="password" autoComplete="current-password" />
+      <PasswordField label="Password" value={password} onChange={setPassword} autoComplete="current-password" />
       {error && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
       <button disabled={submitting} className="w-full rounded-xl bg-sky-600 px-4 py-3 font-bold text-white hover:bg-sky-700 disabled:bg-slate-300">{submitting ? 'Signing in…' : 'Sign in'}</button>
     </form>

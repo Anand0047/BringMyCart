@@ -60,6 +60,7 @@ class AuthIntegrationTest {
         registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
+        registry.add("bmc.auth.allowed-cors-origins", () -> "http://localhost:5173");
     }
 
     @Autowired MockMvc mockMvc;
@@ -75,23 +76,61 @@ class AuthIntegrationTest {
     void registrationPersistsNormalizedCustomerWithHashedPassword() throws Exception {
         String email = uniqueEmail();
         mockMvc.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON)
-                .content("{\"email\":\"" + email.toUpperCase() + "\",\"password\":\"StrongPassword123!\"}"))
+                .content(registration(email.toUpperCase(), "StrongPassword123!", "  Anand Raj  ")))
             .andExpect(status().isCreated());
         UserAccount user = users.findByEmail(email).orElseThrow();
         assertThat(user.getRole()).isEqualTo(Role.CUSTOMER);
+        assertThat(user.getFullName()).isEqualTo("Anand Raj");
         assertThat(user.getPasswordHash()).doesNotContain("StrongPassword123!");
         assertThat(passwordEncoder.matches("StrongPassword123!", user.getPasswordHash())).isTrue();
     }
 
     @Test
+    void corsPreflightAndRegistrationAllowConfiguredFrontendOrigin() throws Exception {
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options("/api/v1/auth/register")
+                .header("Origin", "http://localhost:5173")
+                .header("Access-Control-Request-Method", "POST")
+                .header("Access-Control-Request-Headers", "content-type"))
+            .andExpect(status().isOk())
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("Access-Control-Allow-Origin", "http://localhost:5173"))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("Access-Control-Allow-Credentials", "true"))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("Access-Control-Allow-Methods", org.hamcrest.Matchers.containsString("POST")));
+
+        String email = uniqueEmail();
+        mockMvc.perform(post("/api/v1/auth/register").header("Origin", "http://localhost:5173")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(registration(email, "StrongPassword123!", "Test Customer")))
+            .andExpect(status().isCreated())
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("Access-Control-Allow-Origin", "http://localhost:5173"));
+        mockMvc.perform(post("/api/v1/auth/login").header("Origin", "http://localhost:5173")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(credentials(email, "StrongPassword123!")))
+            .andExpect(status().isOk())
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("Access-Control-Allow-Origin", "http://localhost:5173"))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("Access-Control-Allow-Credentials", "true"));
+    }
+
+    @Test
+    void corsDoesNotAllowUnconfiguredOrigins() throws Exception {
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options("/api/v1/auth/login")
+                .header("Origin", "https://attacker.example")
+                .header("Access-Control-Request-Method", "POST")
+                .header("Access-Control-Request-Headers", "content-type"))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().doesNotExist("Access-Control-Allow-Origin"));
+    }
+
+    @Test
     void registrationRejectsInvalidAndDuplicateEmail() throws Exception {
         mockMvc.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON)
-                .content("{\"email\":\"not-an-email\",\"password\":\"weak\"}"))
+                .content(registration("not-an-email", "weak", "Anand Raj")))
+            .andExpect(status().isBadRequest());
+        mockMvc.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON)
+                .content(registration(uniqueEmail(), "StrongPassword123!", "   ")))
             .andExpect(status().isBadRequest());
         String email = uniqueEmail();
         register(email);
         mockMvc.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON)
-                .content(credentials(email, "StrongPassword123!")))
+                .content(registration(email, "StrongPassword123!", "Test Customer")))
             .andExpect(status().isConflict());
     }
 
@@ -141,6 +180,23 @@ class AuthIntegrationTest {
                 .claim("role", "CUSTOMER").build())).getTokenValue();
         mockMvc.perform(get("/api/v1/auth/me").header("Authorization", "Bearer " + expired))
             .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void authenticatedProfileReturnsFullNameAndLegacyAccountsRemainSupported() throws Exception {
+        String email = uniqueEmail();
+        mockMvc.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON)
+            .content(registration(email, "StrongPassword123!", "Anand Raj"))).andExpect(status().isCreated());
+        mockMvc.perform(get("/api/v1/identity/me").header("Authorization", "Bearer " + accessTokenFromLogin(email)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.email").value(email))
+            .andExpect(jsonPath("$.fullName").value("Anand Raj"));
+
+        String legacyEmail = uniqueEmail();
+        users.saveAndFlush(new UserAccount(legacyEmail, passwordEncoder.encode("StrongPassword123!"), Role.CUSTOMER));
+        mockMvc.perform(get("/api/v1/identity/me").header("Authorization", "Bearer " + accessTokenFromLogin(legacyEmail)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.fullName").value(org.hamcrest.Matchers.nullValue()));
     }
 
     @Test
@@ -278,11 +334,16 @@ class AuthIntegrationTest {
         MvcResult login = login(email);
         String refresh = cookieValue(login, "bmc_refresh");
         String csrfToken = cookieValue(login, "XSRF-TOKEN");
+        MvcResult rotation = mockMvc.perform(refreshRequest(refresh, csrfToken))
+            .andExpect(status().isOk()).andReturn();
+        String currentRefresh = cookieValue(rotation, "bmc_refresh");
         mockMvc.perform(post("/api/v1/auth/logout")
                 .cookie(new MockCookie("bmc_refresh", refresh), new MockCookie("XSRF-TOKEN", csrfToken))
                 .header("X-XSRF-TOKEN", csrfToken))
             .andExpect(status().isNoContent());
         mockMvc.perform(refreshRequest(refresh, csrfToken))
+            .andExpect(status().isUnauthorized());
+        mockMvc.perform(refreshRequest(currentRefresh, csrfToken))
             .andExpect(status().isUnauthorized());
     }
 
@@ -308,7 +369,7 @@ class AuthIntegrationTest {
 
     private void register(String email) throws Exception {
         mockMvc.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON)
-            .content(credentials(email, "StrongPassword123!"))).andExpect(status().isCreated());
+            .content(registration(email, "StrongPassword123!", "Test Customer"))).andExpect(status().isCreated());
     }
 
     private String accessTokenFromLogin(String email) throws Exception {
@@ -349,6 +410,10 @@ class AuthIntegrationTest {
 
     private String credentials(String email, String password) {
         return "{\"email\":\"" + email + "\",\"password\":\"" + password + "\"}";
+    }
+
+    private String registration(String email, String password, String fullName) {
+        return "{\"fullName\":\"" + fullName + "\",\"email\":\"" + email + "\",\"password\":\"" + password + "\"}";
     }
 
     private String uniqueEmail() { return "user-" + UUID.randomUUID() + "@example.com"; }

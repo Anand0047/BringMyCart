@@ -36,34 +36,37 @@ public class ProductEnrichmentStateService {
     }
 
     @Transactional
-    public void complete(UUID savedProductId, ProductMetadata metadata) {
-        savedProductRepository.findById(savedProductId).ifPresent(product -> {
-            if (product.getEnrichmentStatus() == EnrichmentStatus.PROCESSING) {
-                product.completeEnrichment(metadata, Instant.now());
-            }
-        });
+    public boolean complete(UUID savedProductId, ProductMetadata metadata) {
+        Optional<SavedProduct> product = savedProductRepository.findById(savedProductId);
+        if (product.isEmpty() || product.get().getEnrichmentStatus() != EnrichmentStatus.PROCESSING) {
+            return false;
+        }
+        product.get().completeEnrichment(metadata, Instant.now());
+        return true;
     }
 
     @Transactional
-    public void fail(UUID savedProductId, EnrichmentFailureCategory category, boolean retryable) {
-        savedProductRepository.findById(savedProductId).ifPresent(product -> {
-            if (product.getEnrichmentStatus() == EnrichmentStatus.PROCESSING) {
-                Instant nextAttemptAt = retryable && properties.isRecoveryEnabled()
-                    && product.getEnrichmentAttempts() < properties.getMaxAttempts()
-                    ? Instant.now().plus(properties.getRetryDelay()) : null;
-                product.failEnrichment(category, nextAttemptAt);
-            }
-        });
+    public boolean fail(UUID savedProductId, EnrichmentFailureCategory category, boolean retryable) {
+        Optional<SavedProduct> product = savedProductRepository.findById(savedProductId);
+        if (product.isEmpty() || product.get().getEnrichmentStatus() != EnrichmentStatus.PROCESSING) {
+            return false;
+        }
+        Instant nextAttemptAt = retryable && properties.isRecoveryEnabled()
+            && product.get().getEnrichmentAttempts() < properties.getMaxAttempts()
+            ? Instant.now().plus(properties.getRetryDelay()) : null;
+        product.get().failEnrichment(category, nextAttemptAt);
+        return true;
     }
 
     @Transactional
-    public void markExecutorSaturated(UUID savedProductId) {
-        savedProductRepository.findById(savedProductId).ifPresent(product -> {
-            if (product.getEnrichmentStatus() == EnrichmentStatus.PENDING) {
-                product.failEnrichment(EnrichmentFailureCategory.EXECUTOR_SATURATED,
-                    properties.isRecoveryEnabled() ? Instant.now().plus(properties.getRetryDelay()) : null);
-            }
-        });
+    public boolean markExecutorSaturated(UUID savedProductId) {
+        Optional<SavedProduct> product = savedProductRepository.findById(savedProductId);
+        if (product.isEmpty() || product.get().getEnrichmentStatus() != EnrichmentStatus.PENDING) {
+            return false;
+        }
+        product.get().failEnrichment(EnrichmentFailureCategory.EXECUTOR_SATURATED,
+            properties.isRecoveryEnabled() ? Instant.now().plus(properties.getRetryDelay()) : null);
+        return true;
     }
 
     public record EnrichmentJob(UUID savedProductId, String asin) {

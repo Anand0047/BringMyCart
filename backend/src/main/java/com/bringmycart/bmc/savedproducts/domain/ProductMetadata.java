@@ -5,7 +5,7 @@ import java.time.Instant;
 
 /**
  * Provider-neutral, observed metadata. It intentionally excludes customer-review content until
- * Bright Data's applicable storage and usage terms have been verified.
+ * the selected metadata provider's applicable storage and usage terms have been verified.
  */
 public record ProductMetadata(
     String asin,

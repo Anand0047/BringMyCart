@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BringMyCart</title>
+  </head>
+  <body>
+    <main class="popup">
+      <header class="brand-row">
+        <span class="brand-mark" aria-hidden="true">B</span>
+        <div class="brand-copy"><h1>BringMyCart</h1><p>Save it for later</p></div>
+        <span id="connection" class="connection pending"><i></i><span>Checking</span></span>
+      </header>
+
+      <section id="account" class="account-card" aria-live="polite">
+        <span id="avatar" class="avatar" hidden></span>
+        <div class="account-copy"><strong id="greeting">Welcome</strong><span id="account-name">Checking your account…</span></div>
+      </section>
+
+      <section class="product-card" aria-labelledby="product-heading">
+        <div class="section-label">CURRENT AMAZON PAGE</div>
+        <h2 id="product-heading">Ready to save a find?</h2>
+        <p id="product-status" class="muted" aria-live="polite">Checking this tab…</p>
+        <div id="product-details" hidden>
+          <span id="asin" class="asin"></span>
+          <a id="url" target="_blank" rel="noreferrer"></a>
+        </div>
+        <button id="save" class="primary" disabled>Save Item</button>
+      </section>
+
+      <p id="feedback" class="feedback" role="status" aria-live="polite" hidden></p>
+
+      <section class="actions">
+        <button id="auth" class="secondary">Connect to BringMyCart</button>
+        <button id="logout" class="text-button" hidden>Disconnect extension</button>
+        <button id="dashboard" class="dashboard">Open dashboard <span aria-hidden="true">↗</span></button>
+      </section>
+      <footer>Amazon sign-in and checkout are never accessed.</footer>
+    </main>
+    <script type="module" src="/src/popup/main.ts"></script>
+  </body>
+</html>

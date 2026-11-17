@@ -2,14 +2,14 @@
 
 ## 1. Objective and scope
 
-Phase 3 delivers authenticated Amazon India saved-product management, backend-only Bright Data product metadata enrichment, manual metadata refresh, and the React customer dashboard. It does not implement the Chrome extension, affiliate redirects, rewards, gift cards, scheduled price monitoring, or Amazon review-summary display.
+Phase 3 delivers authenticated Amazon India saved-product management, backend-only product metadata enrichment (now provided by Axesso RapidAPI), manual metadata refresh, and the React customer dashboard. It does not implement the Chrome extension, affiliate redirects, rewards, gift cards, scheduled price monitoring, or Amazon review-summary display.
 
 ## 2. Implemented functionality
 
 - Strict HTTPS Amazon India URL validation for supported `/dp/{asin}` and `/gp/product/{asin}` paths; the exact normalized ten-character child ASIN is retained.
 - Owner-scoped save, list (stable paginated response), delete, and manual-refresh APIs. PostgreSQL prevents a duplicate `(user_id, asin)` save while allowing another customer to save the same ASIN.
 - Transaction-after-commit, bounded asynchronous enrichment with `PENDING`, `PROCESSING`, `COMPLETED`, and `FAILED` states. Provider failures retain the saved product and expose only sanitized categories.
-- Backend-only Bright Data adapter with configurable endpoint, dataset ID, credentials, timeouts, response validation, ASIN-match validation, and mapped permitted metadata.
+- Backend-only Axesso RapidAPI adapter using the verified Amazon Product Details GET endpoint, `url` query parameter, RapidAPI key/host headers, configurable timeouts, response validation, ASIN-match validation, and metadata supported by the existing API contract.
 - Explicit customer refresh/retry with a five-minute default cooldown; no scheduled price refresh. Existing successful metadata is retained if a replacement refresh fails.
 - React + TypeScript + Vite dashboard with registration/login, memory-only access token, protected routes, pagination, save/delete/refresh actions, metadata states, and responsive product cards.
 
@@ -41,14 +41,15 @@ Access tokens remain in browser memory only. The rotating refresh token remains 
 
 The developer manually verified that repeated browser reloads retain the authenticated dashboard session. This is manual browser verification; no automated browser run is claimed.
 
-## 6. Bright Data and Amazon Reviews status
+## 6. Axesso RapidAPI and Amazon Reviews status
 
-The adapter can map permitted product metadata: ASIN, optional parent ASIN, title, brand, image, initial/final price, currency, derived discount, rating, review count, availability, and provider timestamp. Bright Data credentials stay in backend configuration only and are not returned or logged.
+The adapter maps Axesso fields supported by the existing model: exact ASIN, optional parent ASIN, title, manufacturer as brand, primary/fallback image, retail and selling prices, INR for Amazon.in when currency is absent, derived discount, rating, review count, availability, and provider timestamp when present. The application applies a process-local configurable monthly request cap (default 100); RapidAPI account usage remains authoritative. The API key stays in backend configuration only and is not returned or logged. Description, gallery images, features, categories, and specifications are not persisted or added to the REST contract because the current model/API does not support them.
 
-Aggregate rating and review count are implemented when supplied. Although `review_summary` and `review_topics` columns exist, Phase 3 does not persist or expose `customers_say` or `customers_say_topics`. The Amazon Reviews popup/modal is **not complete**. Storage/display remains blocked until account-specific Bright Data metadata usage and retention permissions are verified; no review content is fabricated.
+Aggregate rating and review count are implemented when supplied. Although `review_summary` and `review_topics` columns exist, the enrichment pipeline does not persist or expose provider customer summaries or topics. The Amazon Reviews popup/modal is **not complete**. Storage/display remains blocked until account-specific Axesso metadata usage and retention permissions are verified; no review content is fabricated.
 
 ## 7. Verification results
 
+- Axesso provider replacement: implementation and mocked tests are present, but this environment could not compile or execute them. The normal Maven repository resolved to the inaccessible `C:\.m2\repository`; an explicit user-level repository reached compilation but the compiler was denied access to `log4j-api-2.24.3.jar`. No live RapidAPI request was made.
 - Final developer-local backend verification: `mvnw.cmd clean verify` passed **48/48 tests**, with 0 failures, 0 errors, and 0 skipped.
 - Frontend verification: `npm.cmd run test` passed **21/21 tests across 6 files**; `npm.cmd run build` completed successfully.
 - Current review `git diff --check` completed with no whitespace errors.
@@ -58,17 +59,17 @@ Aggregate rating and review count are implemented when supplied. Although `revie
 
 - Saved-product identity derives from the authenticated JWT; no client-provided user ID is trusted.
 - Saved-product repository operations are owner-scoped; other users receive non-disclosing not-found behavior.
-- Bright Data keys, JWT key files, environment files, build outputs, `node_modules`, and local key material are ignored by Git configuration.
+- Axesso RapidAPI keys, JWT key files, environment files, build outputs, `node_modules`, and local key material are ignored by Git configuration.
 - No raw provider error, bearer token, refresh token, or key material is included in API responses or intended logs.
 - CORS uses configured origins and credentials rather than a wildcard with credentials.
 
 ## 9. Known limitations and next-phase prerequisites
 
 - Node `24.15.0` or newer is recommended. Node `24.3.0` emits dependency-engine warnings for the current jsdom dependency set.
-- Verify Bright Data account-specific terms before enabling review-summary/topic persistence or an Amazon Reviews modal.
+- Verify Axesso account-specific terms before enabling review-summary/topic persistence or an Amazon Reviews modal.
 - Confirm production secret management, HTTPS cookie settings, CORS origins, and provider retention obligations before deployment.
 - Chrome MV3 save flow and secure authorization-code/PKCE handoff remain a later approved phase.
 
 ## 10. Completion recommendation
 
-Phase 3 is **ready for approval** for its implemented scope: the developer confirmed all 48 backend tests pass; frontend tests and production build pass; and repeated dashboard refreshes were manually verified. Amazon Reviews summary/topic persistence and popup remain blocked until account-specific Bright Data usage permissions are confirmed. This limitation does not block approval of the delivered saved-products scope.
+Phase 3 is **ready for approval** for its implemented scope: the developer confirmed all 48 backend tests pass; frontend tests and production build pass; and repeated dashboard refreshes were manually verified. Amazon Reviews summary/topic persistence and popup remain blocked until account-specific Axesso usage permissions are confirmed. This limitation does not block approval of the delivered saved-products scope.

@@ -9,11 +9,13 @@ import com.bringmycart.bmc.identity.domain.Role;
 import com.bringmycart.bmc.identity.domain.UserAccount;
 import com.bringmycart.bmc.identity.infrastructure.UserAccountRepository;
 import com.bringmycart.bmc.identity.security.JwtService;
+import com.bringmycart.bmc.savedproducts.application.ProductEnrichmentDispatcher;
 import com.bringmycart.bmc.savedproducts.infrastructure.SavedProductRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -54,6 +56,7 @@ class SavedProductIntegrationTest {
     @Autowired SavedProductRepository savedProducts;
     @Autowired PasswordEncoder passwordEncoder;
     @Autowired JwtService jwtService;
+    @MockBean ProductEnrichmentDispatcher enrichmentDispatcher;
 
     @Test
     void savesExactAsinAndReturnsCanonicalUrlWithoutWaitingForMetadata() throws Exception {
@@ -86,11 +89,12 @@ class SavedProductIntegrationTest {
             .andExpect(jsonPath("$.code").value("invalid_product_url"));
 
         String request = "{\"url\":\"https://www.amazon.in/gp/product/B0D7SJXCPP\"}";
+        String sameAsinWithTitleAndReferral = "{\"url\":\"https://www.amazon.in/Example-Product/dp/B0D7SJXCPP/ref=sr_1_1?psc=1\"}";
         mockMvc.perform(post("/api/v1/saved-products").with(csrf()).header("Authorization", bearer(user))
                 .contentType(MediaType.APPLICATION_JSON).content(request))
             .andExpect(status().isCreated());
         mockMvc.perform(post("/api/v1/saved-products").with(csrf()).header("Authorization", bearer(user))
-                .contentType(MediaType.APPLICATION_JSON).content(request))
+                .contentType(MediaType.APPLICATION_JSON).content(sameAsinWithTitleAndReferral))
             .andExpect(status().isConflict())
             .andExpect(jsonPath("$.code").value("duplicate_saved_product"));
     }
@@ -143,7 +147,8 @@ class SavedProductIntegrationTest {
         String request = "{\"url\":\"https://www.amazon.in/dp/B0D2MW6L54\"}";
 
         mockMvc.perform(post("/api/v1/saved-products").with(csrf()).header("Authorization", bearer(firstUser))
-                .contentType(MediaType.APPLICATION_JSON).content(request))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"url\":\"https://www.amazon.in/Example-Product/dp/B0D2MW6L54/ref=product_page?psc=1\"}"))
             .andExpect(status().isCreated());
         mockMvc.perform(post("/api/v1/saved-products").with(csrf()).header("Authorization", bearer(secondUser))
                 .contentType(MediaType.APPLICATION_JSON).content(request))

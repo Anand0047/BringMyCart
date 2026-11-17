@@ -5,11 +5,13 @@ import java.util.UUID;
 
 import com.bringmycart.bmc.savedproducts.domain.EnrichmentFailureCategory;
 import com.bringmycart.bmc.savedproducts.domain.ProductMetadata;
-import com.bringmycart.bmc.savedproducts.infrastructure.brightdata.ProductMetadataProviderException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 @Service
 public class ProductEnrichmentProcessor {
+    private static final Logger log = LoggerFactory.getLogger(ProductEnrichmentProcessor.class);
     private final ProductEnrichmentStateService stateService;
     private final ProductMetadataProvider metadataProvider;
 
@@ -26,17 +28,29 @@ public class ProductEnrichmentProcessor {
     public void process(UUID savedProductId) {
         Optional<ProductEnrichmentStateService.EnrichmentJob> job = stateService.claim(savedProductId);
         if (job.isEmpty()) {
+            log.info("Saved-product enrichment skipped reason=job_not_claimable_or_not_found");
             return;
         }
+        log.info("Saved-product enrichment claimed status=PROCESSING");
 
         try {
+            log.info("Saved-product metadata provider invocation started");
             ProductMetadata metadata = metadataProvider.fetch(job.get().asin());
-            stateService.complete(savedProductId, metadata);
+            log.info("Saved-product metadata provider returned successfully");
+            boolean persisted = stateService.complete(savedProductId, metadata);
+            log.info("Saved-product enrichment finalStatus={} reason={}", persisted ? "COMPLETED" : "UNCHANGED",
+                persisted ? "metadata_persisted" : "product_missing_or_not_processing");
         } catch (ProductMetadataProviderException exception) {
-            stateService.fail(savedProductId, categoryFor(exception), isRetryable(exception));
+            EnrichmentFailureCategory category = categoryFor(exception);
+            boolean persisted = stateService.fail(savedProductId, category, isRetryable(exception));
+            log.warn("Saved-product enrichment finalStatus={} reason={} providerFailureType={}",
+                persisted ? "FAILED" : "UNCHANGED", persisted ? category : "product_missing_or_not_processing",
+                exception.getFailureType());
         } catch (RuntimeException exception) {
             // Retain only a safe category; raw provider/client messages can include sensitive details.
-            stateService.fail(savedProductId, EnrichmentFailureCategory.UNEXPECTED, false);
+            boolean persisted = stateService.fail(savedProductId, EnrichmentFailureCategory.UNEXPECTED, false);
+            log.error("Saved-product enrichment finalStatus={} reason=UNEXPECTED exceptionType={}",
+                persisted ? "FAILED" : "UNCHANGED", exception.getClass().getSimpleName());
         }
     }
 
@@ -44,7 +58,7 @@ public class ProductEnrichmentProcessor {
         return switch (exception.getFailureType()) {
             case NOT_CONFIGURED -> EnrichmentFailureCategory.NOT_CONFIGURED;
             case AUTHENTICATION -> EnrichmentFailureCategory.AUTHENTICATION;
-            case RATE_LIMITED -> EnrichmentFailureCategory.RATE_LIMITED;
+            case RATE_LIMITED, QUOTA_EXHAUSTED -> EnrichmentFailureCategory.RATE_LIMITED;
             case REMOTE_FAILURE -> EnrichmentFailureCategory.PROVIDER_UNAVAILABLE;
             case TIMEOUT -> EnrichmentFailureCategory.TIMEOUT;
             case INVALID_RESPONSE -> EnrichmentFailureCategory.INVALID_RESPONSE;
@@ -54,7 +68,7 @@ public class ProductEnrichmentProcessor {
     private boolean isRetryable(ProductMetadataProviderException exception) {
         return switch (exception.getFailureType()) {
             case RATE_LIMITED, REMOTE_FAILURE, TIMEOUT -> true;
-            case NOT_CONFIGURED, AUTHENTICATION, INVALID_RESPONSE -> false;
+            case NOT_CONFIGURED, AUTHENTICATION, QUOTA_EXHAUSTED, INVALID_RESPONSE -> false;
         };
     }
 }

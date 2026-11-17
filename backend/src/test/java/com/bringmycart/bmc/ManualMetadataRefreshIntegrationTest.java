@@ -20,7 +20,7 @@ import com.bringmycart.bmc.savedproducts.domain.EnrichmentStatus;
 import com.bringmycart.bmc.savedproducts.domain.ProductMetadata;
 import com.bringmycart.bmc.savedproducts.domain.SavedProduct;
 import com.bringmycart.bmc.savedproducts.infrastructure.SavedProductRepository;
-import com.bringmycart.bmc.savedproducts.infrastructure.brightdata.ProductMetadataProviderException;
+import com.bringmycart.bmc.savedproducts.application.ProductMetadataProviderException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
