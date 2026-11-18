@@ -1,6 +1,6 @@
 # BringMyCart 2.0
 
-BringMyCart is a centralized saved-product and rewards platform. The current implementation provides the Phase 2 identity foundation, Amazon India saved-product workflows, a React customer dashboard, and a Chrome MV3 extension with PKCE-based account authorization and in-page product saving. Product data is enriched asynchronously through Axesso RapidAPI. Affiliate links and rewards remain blocked pending verification; Amazon review-summary display remains blocked by provider usage-permission confirmation.
+BringMyCart is a centralized saved-product and rewards platform. The current implementation provides the identity foundation, Amazon India, Flipkart, and Myntra saved-product workflows, a React customer dashboard, and a Chrome MV3 extension with PKCE-based account authorization and in-page product saving. Amazon metadata is enriched asynchronously through Axesso RapidAPI; Flipkart and Myntra metadata uses the backend-only Scrape.do adapter with validated extension metadata fallback. Affiliate links and rewards remain blocked pending verification; Amazon review-summary display remains blocked by provider usage-permission confirmation.
 
 ## Confirmed stack
 
@@ -16,6 +16,8 @@ Spring Boot 3.5.6 is the approved provisional version. Verify the current suppor
 ```text
 backend/
   src/main/java/com/bringmycart/bmc/   Spring Boot bootstrap and feature modules
+    retailer/                          retailer URL validation and Scrape.do adapter
+    savedproducts/                     saved-product API, persistence and enrichment
   src/main/resources/                  shared/dev config and Flyway migrations
   src/test/                            Testcontainers PostgreSQL integration tests
 docs/                                  SRS, architecture, and phase reports
@@ -181,6 +183,24 @@ The configured RapidAPI BASIC plan provides a 100-request monthly allowance at â
 Crash and executor-saturation recovery is disabled by default. To enable conservative recovery of stale or eligible transiently failed jobs, set `PRODUCT_ENRICHMENT_RECOVERY_ENABLED=true`; its default interval is 15 minutes, stale threshold is 30 minutes, and batch size is 10. It never refreshes `COMPLETED` products and is not price monitoring. A restart can therefore leave a product `PENDING` or `PROCESSING` until this explicit recovery option is enabled. Automated provider retries remain bounded by `PRODUCT_ENRICHMENT_MAX_ATTEMPTS` (default `2`) and apply only to timeout, rate-limit, and temporary provider failures.
 
 Amazon review summaries and sentiment topics are not persisted until Axesso's applicable storage and usage terms are verified. Automated tests use mocked provider responses and never consume RapidAPI quota. For a local metadata check, configure the backend key, save an Amazon India product, then inspect its existing saved-product response after enrichment; do not use repeated saves or refreshes to probe the free quota.
+
+### Flipkart and Myntra metadata (Phase 5A)
+
+The existing saved-products API accepts validated HTTPS product URLs from `amazon.in`, `flipkart.com`, and `myntra.com`. Flipkart identity uses the `pid` query parameter when present (otherwise the product path ID); Myntra identity uses the numeric product ID in a product path. Duplicate identity is scoped to `(user, retailer, retailer product ID)`. The original URL is retained for Buy navigation; tracking parameters are removed from the canonical identity URL. The forward-only Flyway `V8` migration adds retailer identity and optional metadata fields while backfilling existing rows as Amazon/ASIN records.
+
+For Flipkart and Myntra only, the asynchronous enrichment worker makes one Scrape.do API-mode request to `https://api.scrape.do/`, using the required `token` and URL-encoded target `url` query parameters. Set the backend-only `SCRAPEDO_API_TOKEN`; optional settings are `SCRAPEDO_ENABLED` (default `true`), `SCRAPEDO_TIMEOUT` (default `20s`, bounded to 1â€“60 seconds), and `SCRAPEDO_MAX_RESPONSE_BYTES` (default 2,000,000, bounded to 5 MB). The request disables Scrape.do retry and target redirects and does not enable JavaScript rendering, residential proxies, or additional bypass options. The provider token is required in the outbound Scrape.do query per its API contract; it must never be logged or exposed to clients. Scrape.do's current product/credit pricing and account-specific terms should be verified before making live requests. No automated test makes a live request.
+
+The backend parses only `application/ld+json`, Open Graph, standard metadata, and a small retailer-selector fallback with Jsoup. Malformed JSON-LD is skipped. Response data is bounded and treated as untrusted text; URLs must already have passed the retailer allowlist. A CAPTCHA/access-denied/interstitial page is not stored as product data. If provider data is incomplete, validated extension fields fill missing values; if the provider fails, a sufficient extension title remains saved as completed metadata. Otherwise, the URL-only saved product remains and enrichment is marked failed. Missing price stays null; unknown availability stays `UNKNOWN`. No periodic price tracking is added.
+
+Automated verification commands from the repository root:
+
+```cmd
+backend\mvnw.cmd -f backend\pom.xml clean verify
+cd frontend && npm.cmd run test && npm.cmd run build
+cd ..\extension && npm.cmd run test && npm.cmd run typecheck && npm.cmd run build
+```
+
+Use mocked Scrape.do responses and sanitized HTML fixtures for tests. Do not configure a production token in the frontend or extension.
 
 ## React dashboard
 

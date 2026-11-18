@@ -1,4 +1,4 @@
-import { parseAmazonProductUrl } from '../amazon/product-url';
+import { parseRetailerProductUrl } from '../amazon/product-url';
 import { profileMatchesSession, saveAllowed, websiteEventStatus, type SyncStatus } from '../auth/account-sync';
 import { callbackMatches, callbackResponseIsValid, createCodeChallenge, randomUrlSafe } from '../auth/pkce';
 import type { ExtensionMessage, ExtensionMessageResponse, ExtensionUser } from '../shared/messages';
@@ -216,35 +216,37 @@ async function authStatus(): Promise<ExtensionMessageResponse> {
   return { authenticated: true, syncStatus: 'ready', user: profile };
 }
 
-async function saveProduct(url: string): Promise<ExtensionMessageResponse> {
-  const parsed = parseAmazonProductUrl(url);
+async function saveProduct(url: string, metadata?: import('../shared/messages').ProductPageMetadata): Promise<ExtensionMessageResponse> {
+  const parsed = parseRetailerProductUrl(url);
   if (!parsed.supported) return { ok: false, error: 'invalid_product' };
   if (!saveAllowed(await currentSyncStatus())) return { ok: false, error: 'account_sync_required' };
-  if (saving.has(parsed.asin)) return { ok: false, error: 'save_in_progress' };
+  const saveKey = `${parsed.retailer}:${parsed.productId}`;
+  if (saving.has(saveKey)) return { ok: false, error: 'save_in_progress' };
   const generation = authGeneration;
   const controller = new AbortController();
-  saving.set(parsed.asin, controller);
+  saving.set(saveKey, controller);
   try {
     const response = await authenticatedFetch('/saved-products', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: parsed.originalUrl }), signal: controller.signal
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: parsed.originalUrl, metadata }), signal: controller.signal
     }, generation);
     if (generation !== authGeneration) return { ok: false, error: 'account_sync_required' };
     if (!response) return { ok: false, error: 'authentication_required' };
     if (response.status === 409) {
       const error = await response.json() as ApiErrorBody;
-      if (error.code === 'duplicate_saved_product') return { ok: true, result: 'duplicate', asin: parsed.asin };
+      if (error.code === 'duplicate_saved_product') return { ok: true, result: 'duplicate', asin: parsed.asin ?? undefined };
       return { ok: false, error: 'server_error' };
     }
     if (response.status === 401) return { ok: false, error: 'authentication_required' };
     if (!response.ok) return { ok: false, error: 'server_error' };
-    return { ok: true, result: 'saved', asin: parsed.asin };
+    return { ok: true, result: 'saved', asin: parsed.asin ?? undefined };
   } catch { return { ok: false, error: controller.signal.aborted ? 'account_sync_required' : 'network_error' }; }
-  finally { if (saving.get(parsed.asin) === controller) saving.delete(parsed.asin); }
+  finally { if (saving.get(saveKey) === controller) saving.delete(saveKey); }
 }
 
 async function notifyTabs(syncStatus: SyncStatus): Promise<void> {
   try {
-    const tabs = await chrome.tabs.query({ url: ['https://amazon.in/*', 'https://www.amazon.in/*'] });
+    const tabs = await chrome.tabs.query({ url: ['https://amazon.in/*', 'https://www.amazon.in/*',
+      'https://flipkart.com/*', 'https://www.flipkart.com/*', 'https://myntra.com/*', 'https://www.myntra.com/*'] });
     await Promise.all(tabs.flatMap(tab => tab.id === undefined ? [] : [
       chrome.tabs.sendMessage(tab.id, { type: 'AUTH_STATE_CHANGED', authenticated: syncStatus === 'ready', syncStatus }).catch(() => undefined)
     ]));
@@ -288,10 +290,15 @@ async function handleWebsiteAccountEvent(event: 'login' | 'logout'): Promise<voi
 async function activeProduct(): Promise<ExtensionMessageResponse> {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    const result = tab?.url ? parseAmazonProductUrl(tab.url) : null;
-    return result?.supported
-      ? { supported: true, asin: result.asin, canonicalUrl: result.canonicalUrl, originalUrl: result.originalUrl }
-      : { supported: false };
+    const result = tab?.url ? parseRetailerProductUrl(tab.url) : null;
+    if (!result?.supported || tab?.id === undefined) return { supported: false };
+    let metadata: import('../shared/messages').ProductPageMetadata | undefined;
+    try {
+      const page = await chrome.tabs.sendMessage(tab.id, { type: 'GET_PAGE_METADATA' }) as { metadata?: import('../shared/messages').ProductPageMetadata };
+      metadata = page?.metadata;
+    } catch { /* A tab may not yet have the content script; save still works without fallback metadata. */ }
+    return { supported: true, retailer: result.retailer, productId: result.productId, asin: result.asin,
+      canonicalUrl: result.canonicalUrl, originalUrl: result.originalUrl, metadata };
   } catch { return { supported: false }; }
 }
 
@@ -300,7 +307,8 @@ function trustedSender(sender: chrome.runtime.MessageSender): boolean {
   if (sender.url?.startsWith(`chrome-extension://${chrome.runtime.id}/`)) return true;
   try {
     const origin = new URL(sender.url ?? '').origin;
-    return origin === 'https://amazon.in' || origin === 'https://www.amazon.in';
+    return ['https://amazon.in', 'https://www.amazon.in', 'https://flipkart.com',
+      'https://www.flipkart.com', 'https://myntra.com', 'https://www.myntra.com'].includes(origin);
   } catch { return false; }
 }
 
@@ -316,7 +324,7 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
     }).catch(() => sendResponse({ ok: false, error: 'authorization_failed' }));
     return true;
   }
-  if (message?.type === 'SAVE_PRODUCT') { void saveProduct(message.url).then(sendResponse); return true; }
+  if (message?.type === 'SAVE_PRODUCT') { void saveProduct(message.url, message.metadata).then(sendResponse); return true; }
   if (message?.type === 'LOGOUT_EXTENSION') {
     void (async () => {
       authGeneration++;

@@ -1,4 +1,5 @@
-import { parseAmazonProductUrl } from '../amazon/product-url';
+import { parseRetailerProductUrl } from '../amazon/product-url';
+import { extractPageMetadata } from './page-metadata';
 import type { ExtensionMessage, ExtensionMessageResponse } from '../shared/messages';
 
 const host = document.createElement('div');
@@ -11,7 +12,7 @@ root.innerHTML = `<style>
   :host{all:initial}section{position:fixed;z-index:2147483647;right:20px;bottom:20px;width:320px;box-sizing:border-box;padding:18px;border:1px solid #d9e3de;border-radius:14px;background:#fff;color:#1b2924;box-shadow:0 12px 36px #10251e30;font:14px/1.45 system-ui,sans-serif}header{display:flex;align-items:center;gap:10px;margin-bottom:12px}.mark{display:grid;place-items:center;width:34px;height:34px;border-radius:11px;background:#176b55;color:white;font-weight:800}strong{font-size:15px}p{margin:8px 0 14px;color:#52615b}small{display:block;overflow-wrap:anywhere;color:#708079;font-size:11px}footer{display:flex;gap:8px}button{min-height:36px;padding:0 12px;border-radius:8px;font:600 13px system-ui;cursor:pointer}.primary{border:0;background:#176b55;color:white}.secondary{border:1px solid #d5dfda;background:white;color:#31423b}.close{margin-left:auto;border:0;background:transparent;color:#62736b;font-size:20px}
 </style><header><span class="mark">B</span><strong>BringMyCart</strong><button class="close" aria-label="Dismiss">×</button></header><p id="message"></p><small id="asin"></small><footer><button class="primary" id="action"></button><button class="secondary" id="dismiss"></button></footer>`;
 shadow.append(root);
-let currentAsin: string | null = null;
+let currentProductKey: string | null = null;
 let lastUrl = location.href;
 let actionBusy = false;
 let authRevision = 0;
@@ -24,26 +25,28 @@ function send(message: ExtensionMessage): Promise<ExtensionMessageResponse> {
 
 function dismiss(asin: string) {
   try { sessionStorage.setItem(`bmc-prompt-dismissed:${asin}`, '1'); } catch { /* session storage may be unavailable */ }
-  host.remove(); currentAsin = null;
+  host.remove(); currentProductKey = null;
 }
 
 async function showForCurrentUrl() {
-  const product = parseAmazonProductUrl(location.href);
-  if (!product.supported) { host.remove(); currentAsin = null; return; }
-  if (currentAsin === product.asin && host.isConnected) { await updatePrompt(product.asin, product.originalUrl); return; }
-  host.remove(); currentAsin = product.asin;
+  const product = parseRetailerProductUrl(location.href);
+  if (!product.supported) { host.remove(); currentProductKey = null; return; }
+  const productKey = `${product.retailer}:${product.productId}`;
+  if (currentProductKey === productKey && host.isConnected) { await updatePrompt(productKey, product.originalUrl, product.retailer, product.productId); return; }
+  host.remove(); currentProductKey = productKey;
   actionBusy = false;
-  try { if (sessionStorage.getItem(`bmc-prompt-dismissed:${product.asin}`)) return; } catch { /* show prompt without persistence */ }
+  try { if (sessionStorage.getItem(`bmc-prompt-dismissed:${productKey}`)) return; } catch { /* show prompt without persistence */ }
 
   if (!host.isConnected) document.documentElement.append(host);
-  root.querySelector('#asin')!.textContent = `Amazon ASIN: ${product.asin}`;
-  await updatePrompt(product.asin, product.originalUrl);
+  root.querySelector('#asin')!.textContent = product.retailer === 'AMAZON'
+    ? `Amazon ASIN: ${product.asin}` : `${product.retailer} product: ${product.productId}`;
+  await updatePrompt(productKey, product.originalUrl, product.retailer, product.productId);
 }
 
-async function updatePrompt(asin: string, originalUrl: string) {
+async function updatePrompt(productKey: string, originalUrl: string, retailer: string, productId: string) {
   const revision = authRevision;
   const authenticated = await send({ type: 'GET_AUTH_STATUS' });
-  if (currentAsin !== asin || revision !== authRevision) return;
+  if (currentProductKey !== productKey || revision !== authRevision) return;
   const isAuthenticated = 'authenticated' in authenticated && authenticated.authenticated;
   const syncStatus = 'syncStatus' in authenticated ? authenticated.syncStatus : undefined;
   root.querySelector('#message')!.textContent = isAuthenticated
@@ -59,20 +62,20 @@ async function updatePrompt(asin: string, originalUrl: string) {
   action.disabled = actionBusy || syncStatus === 'synchronizing';
   action.title = '';
   dismissButton.textContent = isAuthenticated ? 'No, Thanks' : 'Not Now';
-  dismissButton.onclick = () => dismiss(asin);
-  root.querySelector<HTMLButtonElement>('.close')!.onclick = () => dismiss(asin);
+  dismissButton.onclick = () => dismiss(productKey);
+  root.querySelector<HTMLButtonElement>('.close')!.onclick = () => dismiss(productKey);
   action.onclick = async () => {
     if (!isAuthenticated) {
       const auth = await send({ type: 'START_EXTENSION_AUTH' });
       if (!('ok' in auth) || !auth.ok) root.querySelector('#message')!.textContent =
         'BringMyCart sign-in was not completed. You can try again when ready.';
-      else await updatePrompt(asin, originalUrl);
+      else await updatePrompt(productKey, originalUrl, retailer, productId);
       return;
     }
     if (actionBusy) return;
     actionBusy = true;
     action.textContent = 'Saving…'; action.disabled = true;
-    const result = await send({ type: 'SAVE_PRODUCT', url: originalUrl });
+    const result = await send({ type: 'SAVE_PRODUCT', url: originalUrl, metadata: extractPageMetadata(document) });
     actionBusy = false;
     if ('ok' in result && result.ok && result.result === 'saved') {
       root.querySelector('#message')!.textContent = 'Product saved to your BringMyCart collection.';
@@ -84,7 +87,7 @@ async function updatePrompt(asin: string, originalUrl: string) {
       const error = 'error' in result ? result.error : 'server_error';
       if (error === 'account_sync_required') {
         authRevision++;
-        await updatePrompt(asin, originalUrl);
+        await updatePrompt(productKey, originalUrl, retailer, productId);
         return;
       }
       root.querySelector('#message')!.textContent = error === 'authentication_required'
@@ -99,8 +102,10 @@ async function updatePrompt(asin: string, originalUrl: string) {
   };
 }
 
-chrome.runtime.onMessage.addListener((message: ExtensionMessage) => {
+chrome.runtime.onMessage.addListener((message: ExtensionMessage, _sender, sendResponse) => {
+  if (message?.type === 'GET_PAGE_METADATA') { sendResponse({ metadata: extractPageMetadata(document) }); return true; }
   if (message?.type === 'AUTH_STATE_CHANGED') { authRevision++; actionBusy = false; void showForCurrentUrl(); }
+  return false;
 });
 
 function onNavigation() {

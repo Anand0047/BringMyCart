@@ -115,6 +115,7 @@ class ManualMetadataRefreshIntegrationTest {
         SavedProduct refreshFailure = awaitStatus(completed.getId(), EnrichmentStatus.FAILED);
         assertThat(refreshFailure.getTitle()).isEqualTo("Old title");
         assertThat(refreshFailure.getFinalPrice()).isEqualByComparingTo("7999");
+        assertThat(refreshFailure.getMetadataSource()).isEqualTo("AXESSO");
         assertThat(refreshFailure.getEnrichmentErrorCategory()).isEqualTo(EnrichmentFailureCategory.INVALID_RESPONSE.name());
         mockMvc.perform(refresh(completed.getId(), user))
             .andExpect(status().isConflict())
@@ -278,7 +279,8 @@ class ManualMetadataRefreshIntegrationTest {
     private ProductMetadata oldMetadata() {
         return new ProductMetadata("B0D2MW6L54", null, "Old title", "Old brand", "https://images.example/old.jpg",
             new BigDecimal("9999"), new BigDecimal("7999"), "INR", new BigDecimal("20.00"),
-            new BigDecimal("4.0"), 10L, "In stock", Instant.parse("2026-11-15T10:00:00Z"));
+            new BigDecimal("4.0"), 10L, "In stock", Instant.parse("2026-11-15T10:00:00Z"),
+            null, List.of(), List.of(), List.of(), null, null, "AXESSO");
     }
 
     private ProductMetadata refreshedMetadata() {

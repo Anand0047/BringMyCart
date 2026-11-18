@@ -5,9 +5,12 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 import com.bringmycart.bmc.savedproducts.domain.SavedProduct;
+import com.fasterxml.jackson.databind.JsonNode;
 
 public record SavedProductResponse(
     UUID id,
+    String retailer,
+    String retailerProductId,
     String asin,
     String originalUrl,
     String canonicalUrl,
@@ -15,6 +18,13 @@ public record SavedProductResponse(
     String title,
     String brand,
     String imageUrl,
+    String description,
+    JsonNode imageUrls,
+    JsonNode features,
+    JsonNode categories,
+    JsonNode specifications,
+    String manufacturer,
+    String metadataSource,
     BigDecimal initialPrice,
     BigDecimal finalPrice,
     String currency,
@@ -32,6 +42,8 @@ public record SavedProductResponse(
     public static SavedProductResponse from(SavedProduct product) {
         return new SavedProductResponse(
             product.getId(),
+            product.getRetailer().name(),
+            product.getRetailerProductId(),
             product.getAsin(),
             product.getOriginalUrl(),
             product.getCanonicalUrl(),
@@ -39,6 +51,13 @@ public record SavedProductResponse(
             product.getTitle(),
             product.getBrand(),
             product.getImageUrl(),
+            product.getDescription(),
+            product.getImageUrls(),
+            product.getFeatures(),
+            product.getCategories(),
+            product.getSpecifications(),
+            product.getManufacturer(),
+            product.getMetadataSource(),
             product.getInitialPrice(),
             product.getFinalPrice(),
             product.getCurrency(),

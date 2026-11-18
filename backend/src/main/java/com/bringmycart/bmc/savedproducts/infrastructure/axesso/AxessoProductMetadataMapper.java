@@ -36,7 +36,9 @@ public class AxessoProductMetadataMapper {
             rating(response.productRating()),
             nonNegativeLong(response.countReview()),
             text(response.warehouseAvailability()),
-            timestamp(response.timestamp())
+            timestamp(response.timestamp()),
+            null, java.util.List.of(), java.util.List.of(), java.util.List.of(), null,
+            text(response.manufacturer()), "AXESSO"
         );
     }
 

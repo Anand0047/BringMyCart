@@ -1,6 +1,6 @@
 import './style.css';
 import { displayUser } from '../auth/account-sync';
-import type { ExtensionMessage, ExtensionMessageResponse, ExtensionUser } from '../shared/messages';
+import type { ExtensionMessage, ExtensionMessageResponse, ProductPageMetadata, ExtensionUser } from '../shared/messages';
 
 const dashboardUrl = import.meta.env.VITE_BMC_DASHBOARD_URL ?? 'http://localhost:5173/dashboard';
 const connection = document.querySelector<HTMLElement>('#connection')!;
@@ -16,6 +16,8 @@ const saveButton = document.querySelector<HTMLButtonElement>('#save')!;
 const authButton = document.querySelector<HTMLButtonElement>('#auth')!;
 const logoutButton = document.querySelector<HTMLButtonElement>('#logout')!;
 let productUrl: string | null = null;
+let productMetadata: ProductPageMetadata | undefined;
+let currentRetailer = 'retailer';
 let ready = false;
 let statusRevision = 0;
 
@@ -34,17 +36,20 @@ async function loadProduct() {
   const response = await send({ type: 'GET_ACTIVE_PRODUCT' });
   if (!('supported' in response) || !response.supported) {
     productUrl = null;
+    productMetadata = undefined;
     details.hidden = true;
     productStatus.textContent = 'Open an Amazon India product page to save it here.';
     saveButton.disabled = true;
     return;
   }
+  currentRetailer = response.retailer ?? 'retailer';
   productUrl = response.originalUrl ?? response.canonicalUrl ?? null;
-  asinElement.textContent = response.asin ?? '';
+  productMetadata = response.metadata;
+  asinElement.textContent = response.asin ? `Amazon ASIN: ${response.asin}` : `${currentRetailer} product: ${response.productId ?? ''}`;
   urlElement.href = response.canonicalUrl ?? '#';
   urlElement.textContent = 'View product page';
   details.hidden = false;
-  productStatus.textContent = 'This product page is ready to add to your collection.';
+  productStatus.textContent = `This ${currentRetailer} product page is ready to add to your collection.`;
   saveButton.disabled = !ready || !productUrl;
 }
 
@@ -112,7 +117,7 @@ saveButton.addEventListener('click', async () => {
   saveButton.disabled = true;
   saveButton.textContent = 'Saving…';
   feedback.hidden = true;
-  const result = await send({ type: 'SAVE_PRODUCT', url: productUrl });
+  const result = await send({ type: 'SAVE_PRODUCT', url: productUrl, metadata: productMetadata });
   if ('ok' in result && result.ok) showFeedback(result.result === 'duplicate' ? 'Already in your collection.' : 'Product saved to your collection.');
   else {
     const error = 'error' in result ? result.error : 'server_error';

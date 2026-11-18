@@ -9,6 +9,7 @@ import com.bringmycart.bmc.savedproducts.domain.EnrichmentStatus;
 import com.bringmycart.bmc.savedproducts.domain.ProductMetadata;
 import com.bringmycart.bmc.savedproducts.domain.SavedProduct;
 import com.bringmycart.bmc.savedproducts.infrastructure.SavedProductRepository;
+import com.bringmycart.bmc.retailer.Retailer;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,7 +33,8 @@ public class ProductEnrichmentStateService {
             return Optional.empty();
         }
         return savedProductRepository.findById(savedProductId)
-            .map(product -> new EnrichmentJob(product.getId(), product.getAsin()));
+            .map(product -> new EnrichmentJob(product.getId(), product.getRetailer(), product.getRetailerProductId(),
+                product.getAsin(), product.getCanonicalUrl()));
     }
 
     @Transactional
@@ -42,6 +44,15 @@ public class ProductEnrichmentStateService {
             return false;
         }
         product.get().completeEnrichment(metadata, Instant.now());
+        return true;
+    }
+
+    @Transactional
+    public boolean completeUsingExistingFallback(UUID savedProductId) {
+        Optional<SavedProduct> product = savedProductRepository.findById(savedProductId);
+        if (product.isEmpty() || product.get().getEnrichmentStatus() != EnrichmentStatus.PROCESSING
+            || !product.get().hasFallbackMetadata()) return false;
+        product.get().completeUsingExistingMetadata(Instant.now());
         return true;
     }
 
@@ -69,6 +80,7 @@ public class ProductEnrichmentStateService {
         return true;
     }
 
-    public record EnrichmentJob(UUID savedProductId, String asin) {
+    public record EnrichmentJob(UUID savedProductId, Retailer retailer, String retailerProductId,
+                                String asin, String canonicalUrl) {
     }
 }

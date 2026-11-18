@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { DashboardPage } from './DashboardPage';
 
@@ -23,11 +23,13 @@ beforeEach(() => {
   vi.stubGlobal('confirm', vi.fn(() => true));
 });
 
+afterEach(cleanup);
+
 test('saves, refreshes, and deletes through the typed API layer', async () => {
   render(<MemoryRouter><DashboardPage /></MemoryRouter>);
   await screen.findByText('Example headphones');
 
-  await userEvent.type(screen.getByPlaceholderText('https://www.amazon.in/dp/...'), 'https://www.amazon.in/dp/B0D7SJXCPP');
+  await userEvent.type(screen.getByPlaceholderText('Paste a supported product URL'), 'https://www.amazon.in/dp/B0D7SJXCPP');
   await userEvent.click(screen.getByRole('button', { name: /save product/i }));
   await waitFor(() => expect(api.save).toHaveBeenCalledWith('https://www.amazon.in/dp/B0D7SJXCPP'));
 
@@ -36,4 +38,13 @@ test('saves, refreshes, and deletes through the typed API layer', async () => {
 
   fireEvent.click(screen.getByLabelText('Delete Example headphones'));
   await waitFor(() => expect(api.remove).toHaveBeenCalledWith(product.id));
+});
+
+test('accepts a Myntra product URL through the existing save form', async () => {
+  api.list.mockResolvedValue({ content: [], page: 0, size: 20, totalElements: 0, totalPages: 0, first: true, last: true });
+  api.save.mockResolvedValue(product);
+  render(<MemoryRouter><DashboardPage /></MemoryRouter>);
+  await userEvent.type(screen.getByPlaceholderText('Paste a supported product URL'), 'https://www.myntra.com/shirts/brand/12345678/buy');
+  await userEvent.click(screen.getByRole('button', { name: /save product/i }));
+  await waitFor(() => expect(api.save).toHaveBeenCalledWith('https://www.myntra.com/shirts/brand/12345678/buy'));
 });

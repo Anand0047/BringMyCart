@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.util.List;
 
 import com.bringmycart.bmc.savedproducts.domain.SavedProduct;
+import com.bringmycart.bmc.retailer.Retailer;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -17,6 +18,8 @@ import java.util.Optional;
 
 public interface SavedProductRepository extends JpaRepository<SavedProduct, UUID> {
     boolean existsByUser_IdAndAsin(UUID userId, String asin);
+
+    boolean existsByUser_IdAndRetailerAndRetailerProductId(UUID userId, Retailer retailer, String retailerProductId);
 
     Optional<SavedProduct> findByIdAndUser_Id(UUID id, UUID userId);
 

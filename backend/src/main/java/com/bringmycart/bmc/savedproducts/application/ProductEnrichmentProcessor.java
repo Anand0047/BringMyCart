@@ -2,6 +2,9 @@ package com.bringmycart.bmc.savedproducts.application;
 
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
+import com.bringmycart.bmc.retailer.Retailer;
+import com.bringmycart.bmc.retailer.scrapedo.ScrapeDoProductMetadataProvider;
 
 import com.bringmycart.bmc.savedproducts.domain.EnrichmentFailureCategory;
 import com.bringmycart.bmc.savedproducts.domain.ProductMetadata;
@@ -14,11 +17,19 @@ public class ProductEnrichmentProcessor {
     private static final Logger log = LoggerFactory.getLogger(ProductEnrichmentProcessor.class);
     private final ProductEnrichmentStateService stateService;
     private final ProductMetadataProvider metadataProvider;
+    private final ScrapeDoProductMetadataProvider scrapeDoProvider;
 
+    @Autowired
     public ProductEnrichmentProcessor(ProductEnrichmentStateService stateService,
-                                      ProductMetadataProvider metadataProvider) {
+                                      ProductMetadataProvider metadataProvider,
+                                      ScrapeDoProductMetadataProvider scrapeDoProvider) {
         this.stateService = stateService;
         this.metadataProvider = metadataProvider;
+        this.scrapeDoProvider = scrapeDoProvider;
+    }
+
+    public ProductEnrichmentProcessor(ProductEnrichmentStateService stateService, ProductMetadataProvider metadataProvider) {
+        this(stateService, metadataProvider, null);
     }
 
     /**
@@ -35,23 +46,46 @@ public class ProductEnrichmentProcessor {
 
         try {
             log.info("Saved-product metadata provider invocation started");
-            ProductMetadata metadata = metadataProvider.fetch(job.get().asin());
+            ProductMetadata metadata = job.get().retailer() == Retailer.AMAZON
+                ? metadataProvider.fetch(job.get().asin())
+                : scrapeDoProvider == null
+                    ? unavailableProvider()
+                    : scrapeDoProvider.fetch(job.get().retailer(), job.get().canonicalUrl());
+            if (!hasUsefulMetadata(metadata)) {
+                throw new ProductMetadataProviderException(ProductMetadataProviderException.FailureType.INVALID_RESPONSE,
+                    "Provider returned incomplete product metadata");
+            }
             log.info("Saved-product metadata provider returned successfully");
             boolean persisted = stateService.complete(savedProductId, metadata);
             log.info("Saved-product enrichment finalStatus={} reason={}", persisted ? "COMPLETED" : "UNCHANGED",
                 persisted ? "metadata_persisted" : "product_missing_or_not_processing");
         } catch (ProductMetadataProviderException exception) {
             EnrichmentFailureCategory category = categoryFor(exception);
-            boolean persisted = stateService.fail(savedProductId, category, isRetryable(exception));
+            boolean fallbackCompleted = stateService.completeUsingExistingFallback(savedProductId);
+            boolean persisted = fallbackCompleted || stateService.fail(savedProductId, category, isRetryable(exception));
             log.warn("Saved-product enrichment finalStatus={} reason={} providerFailureType={}",
-                persisted ? "FAILED" : "UNCHANGED", persisted ? category : "product_missing_or_not_processing",
+                fallbackCompleted ? "COMPLETED" : persisted ? "FAILED" : "UNCHANGED",
+                fallbackCompleted ? "extension_metadata_fallback" : persisted ? category : "product_missing_or_not_processing",
                 exception.getFailureType());
         } catch (RuntimeException exception) {
             // Retain only a safe category; raw provider/client messages can include sensitive details.
-            boolean persisted = stateService.fail(savedProductId, EnrichmentFailureCategory.UNEXPECTED, false);
-            log.error("Saved-product enrichment finalStatus={} reason=UNEXPECTED exceptionType={}",
-                persisted ? "FAILED" : "UNCHANGED", exception.getClass().getSimpleName());
+            boolean fallbackCompleted = stateService.completeUsingExistingFallback(savedProductId);
+            boolean persisted = fallbackCompleted || stateService.fail(savedProductId, EnrichmentFailureCategory.UNEXPECTED, false);
+            log.error("Saved-product enrichment finalStatus={} reason={} exceptionType={}",
+                fallbackCompleted ? "COMPLETED" : persisted ? "FAILED" : "UNCHANGED",
+                fallbackCompleted ? "extension_metadata_fallback" : persisted ? "UNEXPECTED" : "product_missing_or_not_processing",
+                exception.getClass().getSimpleName());
         }
+    }
+
+    private ProductMetadata unavailableProvider() {
+        throw new ProductMetadataProviderException(ProductMetadataProviderException.FailureType.NOT_CONFIGURED,
+            "Retailer metadata provider is unavailable");
+    }
+
+    private boolean hasUsefulMetadata(ProductMetadata metadata) {
+        return metadata != null && ((metadata.title() != null && !metadata.title().isBlank())
+            || metadata.imageUrl() != null || metadata.finalPrice() != null);
     }
 
     private EnrichmentFailureCategory categoryFor(ProductMetadataProviderException exception) {

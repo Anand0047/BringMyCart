@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseAmazonProductUrl } from './product-url';
+import { parseAmazonProductUrl, parseRetailerProductUrl } from './product-url';
 describe('Amazon India product URL parser', () => {
   it.each([
     ['https://amazon.in/dp/B0D2MW6L54', 'B0D2MW6L54'],
@@ -15,4 +15,28 @@ describe('Amazon India product URL parser', () => {
   ])('accepts %s', (value, expectedAsin) => { const result=parseAmazonProductUrl(value); expect(result.supported).toBe(true); if(result.supported){expect(result.asin).toBe(expectedAsin);expect(result.canonicalUrl).toBe(`https://www.amazon.in/dp/${expectedAsin}`);} });
   it.each(['https://amazon.com/dp/B0D2MW6L54','https://amazon.in.attacker.com/dp/B0D2MW6L54','http://amazon.in/dp/B0D2MW6L54','https://amazon.in/s?k=x','https://amazon.in/dp/short','https://amazon.in/dp/B0D2MW6L5!','https://amazon.in/name/dp/B0D2MW6L54/extra','https://amazon.in/name/dp/B0D2MW6L54/other','not url'])('rejects %s', value => expect(parseAmazonProductUrl(value).supported).toBe(false));
   it('rejects missing URL',()=>expect(parseAmazonProductUrl()).toEqual({supported:false,reason:'missing_url'}));
+});
+
+describe('multi-retailer product URL parser', () => {
+  it('identifies Flipkart using the exact pid variant and strips tracking query values', () => {
+    const result = parseRetailerProductUrl('https://www.flipkart.com/product-name/p/itm1234567890?pid=MOBABCDE1234&lid=tracking');
+    expect(result).toMatchObject({ supported: true, retailer: 'FLIPKART', productId: 'MOBABCDE1234', asin: null,
+      canonicalUrl: 'https://www.flipkart.com/product-name/p/itm1234567890?pid=MOBABCDE1234' });
+  });
+
+  it('identifies Myntra numeric product IDs and strips tracking parameters', () => {
+    const result = parseRetailerProductUrl('https://www.myntra.com/tshirts/roadster/12345678/buy?utm_source=mail');
+    expect(result).toMatchObject({ supported: true, retailer: 'MYNTRA', productId: '12345678', asin: null,
+      canonicalUrl: 'https://www.myntra.com/tshirts/roadster/12345678/buy' });
+  });
+
+  it.each([
+    'https://flipkart.com/search?q=phone',
+    'https://myntra.com/shop/men',
+    'https://www.flipkart.com.attacker.example/p/itm1234567890?pid=MOBABCDE1234',
+    'http://www.myntra.com/shoes/brand/12345678/buy',
+    'https://www.flipkart.com/product/p/itm1234567890?pid=bad',
+  ])('rejects unsupported or deceptive retailer URL %s', value => {
+    expect(parseRetailerProductUrl(value).supported).toBe(false);
+  });
 });

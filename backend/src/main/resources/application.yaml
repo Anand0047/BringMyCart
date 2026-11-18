@@ -37,6 +37,11 @@ bmc:
     connect-timeout: ${AXESSO_CONNECT_TIMEOUT:5s}
     read-timeout: ${AXESSO_READ_TIMEOUT:30s}
     monthly-request-limit: ${AXESSO_MONTHLY_REQUEST_LIMIT:100}
+  scrapedo:
+    api-token: ${SCRAPEDO_API_TOKEN:}
+    enabled: ${SCRAPEDO_ENABLED:true}
+    timeout: ${SCRAPEDO_TIMEOUT:20s}
+    max-response-bytes: ${SCRAPEDO_MAX_RESPONSE_BYTES:2000000}
   auth:
     issuer: ${JWT_ISSUER:bringmycart}
     audience: ${JWT_AUDIENCE:bringmycart-api}
