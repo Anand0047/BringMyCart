@@ -61,7 +61,8 @@ public class AuthService {
             throw new ApiException(HttpStatus.CONFLICT, "email_in_use", "An account already exists for this email");
         }
         try {
-            UserAccount user = userRepository.save(new UserAccount(email, passwordEncoder.encode(request.password()), Role.CUSTOMER));
+            UserAccount user = userRepository.save(new UserAccount(email, passwordEncoder.encode(request.password()),
+                Role.CUSTOMER, request.fullName().strip()));
             rateLimiter.clear("register", email);
             return user.getId();
         } catch (DataIntegrityViolationException exception) {
@@ -72,6 +73,11 @@ public class AuthService {
 
     @Transactional
     public AuthenticationResult login(String rawEmail, String password) {
+        return login(rawEmail, password, null);
+    }
+
+    @Transactional
+    public AuthenticationResult login(String rawEmail, String password, String previousRefreshToken) {
         String email = normalizeEmail(rawEmail);
         rateLimiter.check("login", email);
         try {
@@ -80,12 +86,19 @@ public class AuthService {
             if (!user.isEnabled()) {
                 throw new BadCredentialsException("Invalid credentials");
             }
+            revokePreviousWebsiteFamily(previousRefreshToken);
             rateLimiter.clear("login", email);
             return issueTokens(user, UUID.randomUUID());
         } catch (AuthenticationException exception) {
             rateLimiter.recordFailure("login", email);
             throw new ApiException(HttpStatus.UNAUTHORIZED, "invalid_credentials", "Invalid email or password");
         }
+    }
+
+    private void revokePreviousWebsiteFamily(String rawToken) {
+        if (rawToken == null || rawToken.isBlank()) return;
+        refreshTokenRepository.findByTokenHashForUpdate(hash(rawToken))
+            .ifPresent(token -> refreshTokenRepository.revokeActiveFamily(token.getFamilyId(), Instant.now()));
     }
 
     @Transactional(noRollbackFor = RefreshTokenRejectedException.class)
@@ -114,14 +127,15 @@ public class AuthService {
         if (rawToken == null || rawToken.isBlank()) {
             return;
         }
-        refreshTokenRepository.findByTokenHashForUpdate(hash(rawToken)).ifPresent(token -> token.revoke(Instant.now()));
+        refreshTokenRepository.findByTokenHashForUpdate(hash(rawToken))
+            .ifPresent(token -> refreshTokenRepository.revokeActiveFamily(token.getFamilyId(), Instant.now()));
     }
 
     private AuthenticationResult issueTokens(UserAccount user, UUID familyId) {
         String rawRefreshToken = randomToken();
         Instant refreshExpiresAt = Instant.now().plus(properties.getRefreshTokenDays(), ChronoUnit.DAYS);
         RefreshToken persisted = refreshTokenRepository.save(new RefreshToken(user, hash(rawRefreshToken), familyId, refreshExpiresAt));
-        JwtService.IssuedAccessToken accessToken = jwtService.issue(user);
+        JwtService.IssuedAccessToken accessToken = jwtService.issue(user, familyId);
         AuthResponse response = new AuthResponse(accessToken.value(), "Bearer", accessToken.expiresAt().getEpochSecond(), user.getId(), user.getEmail(), user.getRole().name());
         return new AuthenticationResult(response, rawRefreshToken, refreshExpiresAt, persisted.getId());
     }

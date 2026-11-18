@@ -9,11 +9,13 @@ import com.bringmycart.bmc.identity.domain.Role;
 import com.bringmycart.bmc.identity.domain.UserAccount;
 import com.bringmycart.bmc.identity.infrastructure.UserAccountRepository;
 import com.bringmycart.bmc.identity.security.JwtService;
+import com.bringmycart.bmc.savedproducts.application.ProductEnrichmentDispatcher;
 import com.bringmycart.bmc.savedproducts.infrastructure.SavedProductRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -54,6 +56,7 @@ class SavedProductIntegrationTest {
     @Autowired SavedProductRepository savedProducts;
     @Autowired PasswordEncoder passwordEncoder;
     @Autowired JwtService jwtService;
+    @MockBean ProductEnrichmentDispatcher enrichmentDispatcher;
 
     @Test
     void savesExactAsinAndReturnsCanonicalUrlWithoutWaitingForMetadata() throws Exception {
@@ -86,11 +89,12 @@ class SavedProductIntegrationTest {
             .andExpect(jsonPath("$.code").value("invalid_product_url"));
 
         String request = "{\"url\":\"https://www.amazon.in/gp/product/B0D7SJXCPP\"}";
+        String sameAsinWithTitleAndReferral = "{\"url\":\"https://www.amazon.in/Example-Product/dp/B0D7SJXCPP/ref=sr_1_1?psc=1\"}";
         mockMvc.perform(post("/api/v1/saved-products").with(csrf()).header("Authorization", bearer(user))
                 .contentType(MediaType.APPLICATION_JSON).content(request))
             .andExpect(status().isCreated());
         mockMvc.perform(post("/api/v1/saved-products").with(csrf()).header("Authorization", bearer(user))
-                .contentType(MediaType.APPLICATION_JSON).content(request))
+                .contentType(MediaType.APPLICATION_JSON).content(sameAsinWithTitleAndReferral))
             .andExpect(status().isConflict())
             .andExpect(jsonPath("$.code").value("duplicate_saved_product"));
     }
@@ -143,7 +147,8 @@ class SavedProductIntegrationTest {
         String request = "{\"url\":\"https://www.amazon.in/dp/B0D2MW6L54\"}";
 
         mockMvc.perform(post("/api/v1/saved-products").with(csrf()).header("Authorization", bearer(firstUser))
-                .contentType(MediaType.APPLICATION_JSON).content(request))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"url\":\"https://www.amazon.in/Example-Product/dp/B0D2MW6L54/ref=product_page?psc=1\"}"))
             .andExpect(status().isCreated());
         mockMvc.perform(post("/api/v1/saved-products").with(csrf()).header("Authorization", bearer(secondUser))
                 .contentType(MediaType.APPLICATION_JSON).content(request))
@@ -151,6 +156,57 @@ class SavedProductIntegrationTest {
 
         assertThat(savedProducts.existsByUser_IdAndAsin(firstUser.getId(), "B0D2MW6L54")).isTrue();
         assertThat(savedProducts.existsByUser_IdAndAsin(secondUser.getId(), "B0D2MW6L54")).isTrue();
+    }
+
+    @Test
+    void savesFlipkartVariantWithValidatedExtensionFallbackAndDeduplicatesPerUser() throws Exception {
+        UserAccount firstUser = createUser();
+        UserAccount secondUser = createUser();
+        String url = "https://www.flipkart.com/phone/p/itm1234567890?pid=MOBABCDE1234&lid=tracking";
+        String request = "{\"url\":\"" + url + "\",\"metadata\":{\"title\":\" Phone \","
+            + "\"brand\":\"Example\",\"imageUrl\":\"https://cdn.example.test/phone.jpg\","
+            + "\"price\":7999,\"currency\":\"INR\",\"availability\":\"IN_STOCK\"}}";
+
+        mockMvc.perform(post("/api/v1/saved-products").with(csrf()).header("Authorization", bearer(firstUser))
+                .contentType(MediaType.APPLICATION_JSON).content(request))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.retailer").value("FLIPKART"))
+            .andExpect(jsonPath("$.retailerProductId").value("MOBABCDE1234"))
+            .andExpect(jsonPath("$.asin").doesNotExist())
+            .andExpect(jsonPath("$.canonicalUrl").value("https://www.flipkart.com/phone/p/itm1234567890?pid=MOBABCDE1234"))
+            .andExpect(jsonPath("$.title").value("Phone"))
+            .andExpect(jsonPath("$.metadataSource").value("EXTENSION"));
+
+        mockMvc.perform(post("/api/v1/saved-products").with(csrf()).header("Authorization", bearer(firstUser))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"url\":\"https://flipkart.com/phone/p/itm1234567890?pid=MOBABCDE1234&affid=other\"}"))
+            .andExpect(status().isConflict())
+            .andExpect(jsonPath("$.code").value("duplicate_saved_product"));
+
+        mockMvc.perform(post("/api/v1/saved-products").with(csrf()).header("Authorization", bearer(secondUser))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"url\":\"" + url + "\"}"))
+            .andExpect(status().isCreated());
+        assertThat(savedProducts.existsByUser_IdAndRetailerAndRetailerProductId(firstUser.getId(),
+            com.bringmycart.bmc.retailer.Retailer.FLIPKART, "MOBABCDE1234")).isTrue();
+        assertThat(savedProducts.existsByUser_IdAndRetailerAndRetailerProductId(secondUser.getId(),
+            com.bringmycart.bmc.retailer.Retailer.FLIPKART, "MOBABCDE1234")).isTrue();
+    }
+
+    @Test
+    void savesMyntraNumericIdAndRejectsOtherRetailerUrlSpoofing() throws Exception {
+        UserAccount user = createUser();
+        mockMvc.perform(post("/api/v1/saved-products").with(csrf()).header("Authorization", bearer(user))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"url\":\"https://www.myntra.com/shirts/brand/12345678/buy?utm_source=tracking\"}"))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.retailer").value("MYNTRA"))
+            .andExpect(jsonPath("$.retailerProductId").value("12345678"))
+            .andExpect(jsonPath("$.canonicalUrl").value("https://www.myntra.com/shirts/brand/12345678/buy"));
+
+        mockMvc.perform(post("/api/v1/saved-products").with(csrf()).header("Authorization", bearer(user))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"url\":\"https://www.flipkart.com.attacker.test/p/itm1234567890?pid=MOBABCDE1234\"}"))
+            .andExpect(status().isBadRequest());
     }
 
     @Test

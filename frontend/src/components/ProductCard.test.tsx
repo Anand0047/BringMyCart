@@ -46,6 +46,30 @@ test('keeps unavailable metadata honest while product enrichment is pending', ()
   expect(screen.getByText('Price unavailable')).toBeInTheDocument();
 });
 
+test('shows a retailer-specific action and opens the original URL when metadata is missing', () => {
+  const flipkartProduct: SavedProduct = {
+    ...product,
+    retailer: 'FLIPKART',
+    retailerProductId: 'MOBABCDE1234',
+    asin: null,
+    title: null,
+    brand: null,
+    imageUrl: null,
+    initialPrice: null,
+    finalPrice: null,
+    discountPercentage: null,
+    enrichmentStatus: 'FAILED',
+    originalUrl: 'https://www.flipkart.com/phone/p/item123456?pid=MOBABCDE1234&tracking=x',
+    canonicalUrl: 'https://www.flipkart.com/phone/p/item123456?pid=MOBABCDE1234'
+  };
+  render(<ProductCard product={flipkartProduct} onRefresh={vi.fn()} onDelete={vi.fn()} />);
+  const buyLink = screen.getByRole('link', { name: /buy on flipkart/i });
+  expect(buyLink).toHaveAttribute('href', flipkartProduct.originalUrl);
+  expect(screen.getByText(/product information unavailable/i)).toBeInTheDocument();
+  expect(screen.getByText('Price unavailable')).toBeInTheDocument();
+  expect(screen.getByText(/metadata retrieval failed/i)).toBeInTheDocument();
+});
+
 test('keeps long titles and failed-enrichment actions usable', async () => {
   const failedProduct: SavedProduct = {
     ...product,

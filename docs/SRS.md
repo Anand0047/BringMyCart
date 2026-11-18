@@ -14,6 +14,7 @@
 | --- | --- | --- |
 | 0.1 | 2026-11-14 | Initial requirements baseline |
 | 0.2 | 2026-11-14 | Confirmed Java 21, Maven, PostgreSQL, React.js with Vite, Spring Security, and JWT-based authentication |
+| 0.3 | 2026-11-19 | Authorized Phase 5A scope expansion to Flipkart and Myntra with Scrape.do metadata enrichment; preserved all FR identifiers and unrelated requirements |
 
 ## 2. Introduction
 
@@ -25,7 +26,7 @@ Users currently retain product choices separately across retailer carts and wish
 
 ## 4. Scope and Boundaries
 
-MVP includes Amazon India (`amazon.in`), a React.js customer website and restricted React.js admin area, a Chrome Manifest V3 extension, and one Java/Spring Boot modular-monolith backend. It excludes all retailer-cart integration, Amazon credential collection, payment/checkout, purchase proof from redirects, mobile clients, other retailers, price comparison/history, AI recommendations, automatic retailer matching, and automated gift-card procurement. Android and additional retailers are future scope.
+The original MVP baseline supports Amazon India (`amazon.in`). The product-owner-authorized Phase 5A scope amendment adds Flipkart (`flipkart.com`) and Myntra (`myntra.com`) product saving through the existing React.js customer website, Chrome Manifest V3 extension, and Java/Spring Boot modular-monolith backend. It excludes all retailer-cart integration, retailer credential collection, payment/checkout, purchase proof from redirects, mobile clients, retailers beyond these three, price comparison/history, AI recommendations, automatic retailer matching, and automated gift-card procurement. Android and other additional retailers remain future scope.
 
 ## 5. User Roles and Permissions
 
@@ -64,7 +65,7 @@ Administrators must not receive broad access by default; authorization is enforc
 
 ### FR-003 — Supported-Page Detection
 
-**Description / expected behavior:** The Manifest V3 extension determines whether the active tab is a supported Amazon India product page and exposes Save Item only when appropriate. Available product information may include ASIN, title, original URL, image, and price where legally and technically permitted; no field is guaranteed. **Acceptance criteria:** unsupported retailer pages and invalid product URLs show an explanatory state and do not submit a save; missing product fields are handled without fabricated data. **Dependencies:** approved product URL rules and permitted metadata method (TBD). **Status:** Confirmed.
+**Description / expected behavior:** The Manifest V3 extension determines whether the active tab is a supported Amazon India, Flipkart, or Myntra product page and exposes Save Item only when appropriate. Available product information may include retailer product ID, title, original URL, image, and price where permitted; no field is guaranteed. **Acceptance criteria:** unsupported retailer pages and invalid product URLs show an explanatory state and do not submit a save; missing product fields are handled without fabricated data. **Dependencies:** approved product URL rules and permitted metadata method. **Status:** Confirmed; Phase 5A enables only these three retailers.
 
 ### FR-004 — Authenticated Item Save
 
@@ -72,7 +73,7 @@ Administrators must not receive broad access by default; authorization is enforc
 
 ### FR-005 — Saved-Product Management
 
-**Description / expected behavior:** A customer can list and remove their saved products and select a product to buy at Amazon. A product later unavailable on Amazon remains a saved reference unless the customer removes it. **Acceptance criteria:** customers cannot alter other users’ products; removal is reflected in their dashboard; unavailable or incomplete product information is clearly handled. **Dependencies:** FR-004. **Status:** Confirmed.
+**Description / expected behavior:** A customer can list and remove their saved products and select a product to open at its original supported retailer. A product later unavailable at the retailer remains a saved reference unless the customer removes it. **Acceptance criteria:** customers cannot alter other users’ products; removal is reflected in their dashboard; unavailable or incomplete product information is clearly handled. **Dependencies:** FR-004. **Status:** Confirmed.
 
 ### FR-006 — Affiliate Outbound Redirect
 
@@ -151,7 +152,7 @@ Real affiliate-funded reward issuance remains blocked. It cannot be enabled unti
 
 ## 13. Future Enhancements
 
-Potential post-MVP work includes Flipkart, Myntra, Nykaa and other retailer adapters, Android, shared backend client expansion, automated inventory procurement/fulfillment, and additional permitted reward programs. Price comparison/history, AI recommendations, and automatic cross-retailer matching are not current scope.
+Potential future work includes Nykaa and other retailer adapters beyond the three currently authorized, Android, shared backend client expansion, automated inventory procurement/fulfillment, and additional permitted reward programs. Price comparison/history, AI recommendations, and automatic cross-retailer matching are not current scope.
 
 ## 14. Assumptions
 

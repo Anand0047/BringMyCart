@@ -2,6 +2,8 @@ package com.bringmycart.bmc.identity.security;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
@@ -17,6 +19,9 @@ public class AuthProperties {
     private long rateLimitWindowMinutes;
     private String privateKeyLocation;
     private String publicKeyLocation;
+    private Map<String, String> extensionClients = new HashMap<>();
+    private long extensionAccessTokenMinutes = 8;
+    private long extensionRefreshTokenDays = 7;
 
     public String getIssuer() { return issuer; }
     public void setIssuer(String issuer) { this.issuer = issuer; }
@@ -38,6 +43,12 @@ public class AuthProperties {
     public void setPrivateKeyLocation(String privateKeyLocation) { this.privateKeyLocation = privateKeyLocation; }
     public String getPublicKeyLocation() { return publicKeyLocation; }
     public void setPublicKeyLocation(String publicKeyLocation) { this.publicKeyLocation = publicKeyLocation; }
+    public Map<String, String> getExtensionClients() { return extensionClients; }
+    public void setExtensionClients(Map<String, String> extensionClients) { this.extensionClients = extensionClients; }
+    public long getExtensionAccessTokenMinutes() { return extensionAccessTokenMinutes; }
+    public void setExtensionAccessTokenMinutes(long extensionAccessTokenMinutes) { this.extensionAccessTokenMinutes = extensionAccessTokenMinutes; }
+    public long getExtensionRefreshTokenDays() { return extensionRefreshTokenDays; }
+    public void setExtensionRefreshTokenDays(long extensionRefreshTokenDays) { this.extensionRefreshTokenDays = extensionRefreshTokenDays; }
 
     public List<String> corsOrigins() {
         return Arrays.stream(allowedCorsOrigins.split(","))

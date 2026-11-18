@@ -11,13 +11,22 @@ export interface AuthResponse {
 
 export interface SavedProduct {
   id: string;
-  asin: string;
+  retailer?: 'AMAZON' | 'FLIPKART' | 'MYNTRA';
+  retailerProductId?: string;
+  asin: string | null;
   originalUrl: string;
   canonicalUrl: string;
   parentAsin: string | null;
   title: string | null;
   brand: string | null;
   imageUrl: string | null;
+  description?: string | null;
+  imageUrls?: unknown;
+  features?: unknown;
+  categories?: unknown;
+  specifications?: unknown;
+  manufacturer?: string | null;
+  metadataSource?: 'URL_ONLY' | 'EXTENSION' | 'SCRAPEDO' | 'AXESSO';
   initialPrice: number | null;
   finalPrice: number | null;
   currency: string | null;

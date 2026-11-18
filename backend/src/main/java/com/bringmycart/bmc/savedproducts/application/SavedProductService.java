@@ -10,6 +10,9 @@ import com.bringmycart.bmc.savedproducts.domain.SavedProduct;
 import com.bringmycart.bmc.savedproducts.infrastructure.SavedProductRepository;
 import com.bringmycart.bmc.savedproducts.validation.AmazonIndiaProductUrlValidator;
 import com.bringmycart.bmc.savedproducts.validation.ValidatedAmazonProductUrl;
+import com.bringmycart.bmc.retailer.RetailerProductUrlValidator;
+import com.bringmycart.bmc.retailer.ValidatedRetailerProductUrl;
+import com.bringmycart.bmc.savedproducts.api.dto.ExtensionProductMetadata;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -22,13 +25,13 @@ import org.springframework.context.ApplicationEventPublisher;
 public class SavedProductService {
     private final SavedProductRepository savedProductRepository;
     private final UserAccountRepository userAccountRepository;
-    private final AmazonIndiaProductUrlValidator urlValidator;
+    private final RetailerProductUrlValidator urlValidator;
     private final ApplicationEventPublisher eventPublisher;
     private final ProductEnrichmentProperties enrichmentProperties;
 
     public SavedProductService(SavedProductRepository savedProductRepository,
                                UserAccountRepository userAccountRepository,
-                               AmazonIndiaProductUrlValidator urlValidator,
+                               RetailerProductUrlValidator urlValidator,
                                ApplicationEventPublisher eventPublisher,
                                ProductEnrichmentProperties enrichmentProperties) {
         this.savedProductRepository = savedProductRepository;
@@ -40,22 +43,53 @@ public class SavedProductService {
 
     @Transactional
     public SavedProduct save(UUID authenticatedUserId, String submittedUrl) {
-        ValidatedAmazonProductUrl productUrl = urlValidator.validate(submittedUrl);
+        return save(authenticatedUserId, submittedUrl, null);
+    }
+
+    @Transactional
+    public SavedProduct save(UUID authenticatedUserId, String submittedUrl, ExtensionProductMetadata clientMetadata) {
+        ValidatedRetailerProductUrl productUrl = urlValidator.validate(submittedUrl);
         UserAccount user = currentUser(authenticatedUserId);
 
-        if (savedProductRepository.existsByUser_IdAndAsin(user.getId(), productUrl.asin())) {
+        if (savedProductRepository.existsByUser_IdAndRetailerAndRetailerProductId(
+            user.getId(), productUrl.retailer(), productUrl.productId())) {
             throw duplicateProduct();
         }
 
         try {
-            SavedProduct savedProduct = savedProductRepository.saveAndFlush(new SavedProduct(
-                user, productUrl.asin(), productUrl.originalUrl(), productUrl.canonicalUrl()));
+            SavedProduct savedProduct = new SavedProduct(user, productUrl.retailer(), productUrl.productId(),
+                productUrl.asin(), productUrl.originalUrl(), productUrl.canonicalUrl());
+            if (clientMetadata != null && productUrl.retailer() != com.bringmycart.bmc.retailer.Retailer.AMAZON) {
+                savedProduct.applyClientMetadata(clean(clientMetadata.title(), 500), clean(clientMetadata.brand(), 255),
+                    safeImage(clientMetadata.imageUrl()), safePrice(clientMetadata.price()),
+                    clientMetadata.currency() == null ? "INR" : "INR", clean(clientMetadata.availability(), 32));
+            }
+            savedProduct = savedProductRepository.saveAndFlush(savedProduct);
             eventPublisher.publishEvent(new SavedProductCreatedEvent(savedProduct.getId()));
             return savedProduct;
         } catch (DataIntegrityViolationException exception) {
             // The constraint remains authoritative when simultaneous requests race past the pre-check.
             throw duplicateProduct();
         }
+    }
+
+    private String clean(String value, int maxLength) {
+        if (value == null) return null;
+        String clean = org.jsoup.Jsoup.parseBodyFragment(value).text().trim();
+        return clean.isBlank() ? null : clean.substring(0, Math.min(clean.length(), maxLength));
+    }
+
+    private String safeImage(String value) {
+        if (value == null) return null;
+        try {
+            java.net.URI uri = java.net.URI.create(value);
+            return "https".equalsIgnoreCase(uri.getScheme()) && uri.getHost() != null
+                && uri.getUserInfo() == null ? value : null;
+        } catch (IllegalArgumentException exception) { return null; }
+    }
+
+    private java.math.BigDecimal safePrice(java.math.BigDecimal value) {
+        return value != null && value.signum() > 0 && value.precision() <= 12 && value.scale() <= 2 ? value : null;
     }
 
     @Transactional(readOnly = true)

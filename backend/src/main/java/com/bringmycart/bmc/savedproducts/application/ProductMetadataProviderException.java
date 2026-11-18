@@ -1,4 +1,4 @@
-package com.bringmycart.bmc.savedproducts.infrastructure.brightdata;
+package com.bringmycart.bmc.savedproducts.application;
 
 public class ProductMetadataProviderException extends RuntimeException {
     private final FailureType failureType;
@@ -19,6 +19,7 @@ public class ProductMetadataProviderException extends RuntimeException {
         NOT_CONFIGURED,
         AUTHENTICATION,
         RATE_LIMITED,
+        QUOTA_EXHAUSTED,
         REMOTE_FAILURE,
         TIMEOUT,
         INVALID_RESPONSE

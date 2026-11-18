@@ -27,6 +27,9 @@ public class UserAccount {
     @Column(name = "password_hash", nullable = false, length = 100)
     private String passwordHash;
 
+    @Column(name = "full_name", length = 100)
+    private String fullName;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private Role role;
@@ -44,9 +47,14 @@ public class UserAccount {
     }
 
     public UserAccount(String email, String passwordHash, Role role) {
+        this(email, passwordHash, role, null);
+    }
+
+    public UserAccount(String email, String passwordHash, Role role, String fullName) {
         this.email = email;
         this.passwordHash = passwordHash;
         this.role = role;
+        this.fullName = fullName;
         this.enabled = true;
     }
 
@@ -64,6 +72,7 @@ public class UserAccount {
 
     public UUID getId() { return id; }
     public String getEmail() { return email; }
+    public String getFullName() { return fullName; }
     public String getPasswordHash() { return passwordHash; }
     public Role getRole() { return role; }
     public boolean isEnabled() { return enabled; }

@@ -39,7 +39,7 @@ public class SavedProductController {
     public ResponseEntity<SavedProductResponse> save(@AuthenticationPrincipal Jwt jwt,
                                                      @Valid @RequestBody SaveSavedProductRequest request) {
         SavedProductResponse response = SavedProductResponse.from(
-            savedProductService.save(userId(jwt), request.url()));
+            savedProductService.save(userId(jwt), request.url(), request.metadata()));
         return ResponseEntity.created(URI.create("/api/v1/saved-products/" + response.id())).body(response);
     }
 

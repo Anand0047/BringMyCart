@@ -36,7 +36,10 @@ export function refreshSession(): Promise<AuthResponse> {
     return refreshInFlight;
   }
 
-  const pending = apiClient.post<AuthResponse>('/auth/refresh').then((response) => response.data);
+  const doRefresh = () => apiClient.post<AuthResponse>('/auth/refresh').then((response) => response.data);
+  const pending = typeof navigator !== 'undefined' && navigator.locks
+    ? navigator.locks.request('bmc-website-refresh-cookie', { mode: 'exclusive' }, doRefresh)
+    : doRefresh();
   refreshInFlight = pending;
   void pending.then(
     () => { if (refreshInFlight === pending) refreshInFlight = null; },
@@ -111,4 +114,23 @@ export function errorMessage(error: unknown, fallback: string) {
     return payload?.message ?? fallback;
   }
   return fallback;
+}
+
+export function authenticationErrorMessage(error: unknown, operation: 'login' | 'register') {
+  if (!axios.isAxiosError<ApiError>(error)) return 'Unable to connect to the server. Please try again.';
+  const status = error.response?.status;
+  const code = error.response?.data?.code;
+  const fields = error.response?.data?.fieldErrors ?? {};
+  if (operation === 'login') {
+    if (fields.email || code === 'validation_failed' && status === 400) return 'Please enter a valid email address.';
+    if (fields.password) return 'Please enter your password.';
+    if (status === 401 || status === 429) return 'Invalid email or password. Please try again.';
+    if (!error.response) return 'Unable to connect to the server. Please try again.';
+    return 'Something went wrong. Please try again shortly.';
+  }
+  if (status === 409 && code === 'email_in_use') return 'An account with this email already exists. Please sign in.';
+  if (fields.email || status === 400 && code === 'validation_failed') return fields.password ?? 'Please enter a valid email address.';
+  if (!error.response) return 'Unable to connect to the server. Please try again.';
+  if (status !== undefined && status >= 500) return 'Something went wrong. Please try again shortly.';
+  return fields.password ?? fields.email ?? 'Please check the information and try again.';
 }

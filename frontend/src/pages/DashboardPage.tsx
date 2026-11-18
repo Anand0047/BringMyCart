@@ -62,7 +62,7 @@ export function DashboardPage() {
   }
 
   return <AppLayout>
-    <section className="mb-7 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-sm font-semibold uppercase tracking-widest text-sky-700">Centralized wishlist</p><h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-950">Saved products</h1><p className="mt-2 text-slate-600">Keep your Amazon India finds in one place.</p></div>{page && <p className="text-sm text-slate-500">{page.totalElements} saved {page.totalElements === 1 ? 'product' : 'products'}</p>}</section>
+    <section className="mb-7 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-sm font-semibold uppercase tracking-widest text-sky-700">Centralized wishlist</p><h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-950">Saved products</h1><p className="mt-2 text-slate-600">Keep your Amazon India, Flipkart, and Myntra finds in one place.</p></div>{page && <p className="text-sm text-slate-500">{page.totalElements} saved {page.totalElements === 1 ? 'product' : 'products'}</p>}</section>
     <SaveProductForm onSave={save} disabled={loading} />
     {notice && <p role="status" className="mt-4 rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{notice}</p>}
     {error && <p role="alert" className="mt-4 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-800">{error}</p>}

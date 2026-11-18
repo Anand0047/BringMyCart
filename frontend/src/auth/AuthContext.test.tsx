@@ -1,11 +1,14 @@
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { StrictMode } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 
 const authApi = vi.hoisted(() => ({ initializeCsrf: vi.fn(), refresh: vi.fn(), login: vi.fn(), register: vi.fn(), logout: vi.fn() }));
+const extensionBridge = vi.hoisted(() => ({ notifyExtensionAccountEvent: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('../api/authApi', () => ({ authApi }));
 vi.mock('../api/client', () => ({ setAccessToken: vi.fn(), setSessionCallbacks: vi.fn() }));
+vi.mock('../api/extensionBridge', () => extensionBridge);
 
 import { AuthProvider } from './AuthContext';
 import { ProtectedRoute } from './ProtectedRoute';
@@ -14,6 +17,12 @@ import { useAuth } from './useAuth';
 function SessionState() {
   const { session, restoring } = useAuth();
   return <p>{restoring ? 'restoring' : session?.email ?? 'signed-out'}</p>;
+}
+
+function SessionControls() {
+  const { login, logout, restoring } = useAuth();
+  return <><button disabled={restoring} onClick={() => void login('customer@example.com', 'StrongPassword123!')}>Login action</button>
+    <button disabled={restoring} onClick={() => void logout()}>Logout action</button></>;
 }
 
 function RestoredDashboard() {
@@ -28,6 +37,21 @@ function RestoredDashboard() {
 beforeEach(() => {
   vi.clearAllMocks();
   authApi.initializeCsrf.mockResolvedValue(undefined);
+  extensionBridge.notifyExtensionAccountEvent.mockResolvedValue(undefined);
+});
+
+test('notifies the extension on successful website login and logout without sending identity credentials', async () => {
+  authApi.refresh.mockRejectedValue(new Error('signed out'));
+  authApi.login.mockResolvedValue({ accessToken: 'memory-only', tokenType: 'Bearer', expiresAt: 1, userId: 'user-a', email: 'customer@example.com', role: 'CUSTOMER' });
+  authApi.logout.mockResolvedValue(undefined);
+  render(<AuthProvider><SessionControls /></AuthProvider>);
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Login action' })).not.toBeDisabled());
+  extensionBridge.notifyExtensionAccountEvent.mockClear();
+  await userEvent.click(screen.getByRole('button', { name: 'Login action' }));
+  await waitFor(() => expect(extensionBridge.notifyExtensionAccountEvent).toHaveBeenCalledWith('login'));
+  await userEvent.click(screen.getByRole('button', { name: 'Logout action' }));
+  await waitFor(() => expect(extensionBridge.notifyExtensionAccountEvent).toHaveBeenCalledWith('logout'));
+  expect(extensionBridge.notifyExtensionAccountEvent.mock.calls).toEqual([[ 'login' ], [ 'logout' ]]);
 });
 afterEach(cleanup);
 

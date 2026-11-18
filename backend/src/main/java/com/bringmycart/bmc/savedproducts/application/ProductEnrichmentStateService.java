@@ -9,6 +9,7 @@ import com.bringmycart.bmc.savedproducts.domain.EnrichmentStatus;
 import com.bringmycart.bmc.savedproducts.domain.ProductMetadata;
 import com.bringmycart.bmc.savedproducts.domain.SavedProduct;
 import com.bringmycart.bmc.savedproducts.infrastructure.SavedProductRepository;
+import com.bringmycart.bmc.retailer.Retailer;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,40 +33,54 @@ public class ProductEnrichmentStateService {
             return Optional.empty();
         }
         return savedProductRepository.findById(savedProductId)
-            .map(product -> new EnrichmentJob(product.getId(), product.getAsin()));
+            .map(product -> new EnrichmentJob(product.getId(), product.getRetailer(), product.getRetailerProductId(),
+                product.getAsin(), product.getCanonicalUrl()));
     }
 
     @Transactional
-    public void complete(UUID savedProductId, ProductMetadata metadata) {
-        savedProductRepository.findById(savedProductId).ifPresent(product -> {
-            if (product.getEnrichmentStatus() == EnrichmentStatus.PROCESSING) {
-                product.completeEnrichment(metadata, Instant.now());
-            }
-        });
+    public boolean complete(UUID savedProductId, ProductMetadata metadata) {
+        Optional<SavedProduct> product = savedProductRepository.findById(savedProductId);
+        if (product.isEmpty() || product.get().getEnrichmentStatus() != EnrichmentStatus.PROCESSING) {
+            return false;
+        }
+        product.get().completeEnrichment(metadata, Instant.now());
+        return true;
     }
 
     @Transactional
-    public void fail(UUID savedProductId, EnrichmentFailureCategory category, boolean retryable) {
-        savedProductRepository.findById(savedProductId).ifPresent(product -> {
-            if (product.getEnrichmentStatus() == EnrichmentStatus.PROCESSING) {
-                Instant nextAttemptAt = retryable && properties.isRecoveryEnabled()
-                    && product.getEnrichmentAttempts() < properties.getMaxAttempts()
-                    ? Instant.now().plus(properties.getRetryDelay()) : null;
-                product.failEnrichment(category, nextAttemptAt);
-            }
-        });
+    public boolean completeUsingExistingFallback(UUID savedProductId) {
+        Optional<SavedProduct> product = savedProductRepository.findById(savedProductId);
+        if (product.isEmpty() || product.get().getEnrichmentStatus() != EnrichmentStatus.PROCESSING
+            || !product.get().hasFallbackMetadata()) return false;
+        product.get().completeUsingExistingMetadata(Instant.now());
+        return true;
     }
 
     @Transactional
-    public void markExecutorSaturated(UUID savedProductId) {
-        savedProductRepository.findById(savedProductId).ifPresent(product -> {
-            if (product.getEnrichmentStatus() == EnrichmentStatus.PENDING) {
-                product.failEnrichment(EnrichmentFailureCategory.EXECUTOR_SATURATED,
-                    properties.isRecoveryEnabled() ? Instant.now().plus(properties.getRetryDelay()) : null);
-            }
-        });
+    public boolean fail(UUID savedProductId, EnrichmentFailureCategory category, boolean retryable) {
+        Optional<SavedProduct> product = savedProductRepository.findById(savedProductId);
+        if (product.isEmpty() || product.get().getEnrichmentStatus() != EnrichmentStatus.PROCESSING) {
+            return false;
+        }
+        Instant nextAttemptAt = retryable && properties.isRecoveryEnabled()
+            && product.get().getEnrichmentAttempts() < properties.getMaxAttempts()
+            ? Instant.now().plus(properties.getRetryDelay()) : null;
+        product.get().failEnrichment(category, nextAttemptAt);
+        return true;
     }
 
-    public record EnrichmentJob(UUID savedProductId, String asin) {
+    @Transactional
+    public boolean markExecutorSaturated(UUID savedProductId) {
+        Optional<SavedProduct> product = savedProductRepository.findById(savedProductId);
+        if (product.isEmpty() || product.get().getEnrichmentStatus() != EnrichmentStatus.PENDING) {
+            return false;
+        }
+        product.get().failEnrichment(EnrichmentFailureCategory.EXECUTOR_SATURATED,
+            properties.isRecoveryEnabled() ? Instant.now().plus(properties.getRetryDelay()) : null);
+        return true;
+    }
+
+    public record EnrichmentJob(UUID savedProductId, Retailer retailer, String retailerProductId,
+                                String asin, String canonicalUrl) {
     }
 }
