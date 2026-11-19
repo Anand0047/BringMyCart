@@ -46,11 +46,18 @@ public class ProductEnrichmentProcessor {
 
         try {
             log.info("Saved-product metadata provider invocation started");
-            ProductMetadata metadata = job.get().retailer() == Retailer.AMAZON
-                ? metadataProvider.fetch(job.get().asin())
-                : scrapeDoProvider == null
-                    ? unavailableProvider()
-                    : scrapeDoProvider.fetch(job.get().retailer(), job.get().canonicalUrl());
+            ProductMetadata metadata;
+            if (job.get().retailer() == Retailer.UNSUPPORTED) {
+                throw new ProductMetadataProviderException(ProductMetadataProviderException.FailureType.INVALID_RESPONSE,
+                    "Saved product belongs to a retired retailer");
+            }
+            if (job.get().retailer() == Retailer.AMAZON) {
+                metadata = metadataProvider.fetch(job.get().asin());
+            } else if (scrapeDoProvider == null) {
+                metadata = unavailableProvider();
+            } else {
+                metadata = scrapeDoProvider.fetch(job.get().retailer(), job.get().canonicalUrl());
+            }
             if (!hasUsefulMetadata(metadata)) {
                 throw new ProductMetadataProviderException(ProductMetadataProviderException.FailureType.INVALID_RESPONSE,
                     "Provider returned incomplete product metadata");

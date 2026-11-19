@@ -31,7 +31,7 @@ function dismiss(asin: string) {
 async function showForCurrentUrl() {
   const product = parseRetailerProductUrl(location.href);
   if (!product.supported) { host.remove(); currentProductKey = null; return; }
-  const productKey = `${product.retailer}:${product.productId}`;
+  const productKey = `${product.retailer}:${product.productId}:${product.variantId ?? ''}`;
   if (currentProductKey === productKey && host.isConnected) { await updatePrompt(productKey, product.originalUrl, product.retailer, product.productId); return; }
   host.remove(); currentProductKey = productKey;
   actionBusy = false;
@@ -39,8 +39,17 @@ async function showForCurrentUrl() {
 
   if (!host.isConnected) document.documentElement.append(host);
   root.querySelector('#asin')!.textContent = product.retailer === 'AMAZON'
-    ? `Amazon ASIN: ${product.asin}` : `${product.retailer} product: ${product.productId}`;
+    ? `Amazon ASIN: ${product.asin}`
+    : `${retailerName(product.retailer)} product: ${product.productId}${product.variantLabel ? ` · ${product.variantLabel}` : ''}`;
   await updatePrompt(productKey, product.originalUrl, product.retailer, product.productId);
+}
+
+function retailerName(retailer: string): string {
+  const names: Record<string, string> = {
+    AMAZON: 'Amazon India', FLIPKART: 'Flipkart', MYNTRA: 'Myntra', MEESHO: 'Meesho',
+    AJIO: 'AJIO', NYKAA_FASHION: 'Nykaa Fashion', NYKAA: 'Nykaa', CROMA: 'Croma'
+  };
+  return names[retailer] ?? 'Retailer';
 }
 
 async function updatePrompt(productKey: string, originalUrl: string, retailer: string, productId: string) {
@@ -75,7 +84,7 @@ async function updatePrompt(productKey: string, originalUrl: string, retailer: s
     if (actionBusy) return;
     actionBusy = true;
     action.textContent = 'Saving…'; action.disabled = true;
-    const result = await send({ type: 'SAVE_PRODUCT', url: originalUrl, metadata: extractPageMetadata(document) });
+    const result = await send({ type: 'SAVE_PRODUCT', url: originalUrl, metadata: extractPageMetadata(document, productId) });
     actionBusy = false;
     if ('ok' in result && result.ok && result.result === 'saved') {
       root.querySelector('#message')!.textContent = 'Product saved to your BringMyCart collection.';
@@ -103,7 +112,11 @@ async function updatePrompt(productKey: string, originalUrl: string, retailer: s
 }
 
 chrome.runtime.onMessage.addListener((message: ExtensionMessage, _sender, sendResponse) => {
-  if (message?.type === 'GET_PAGE_METADATA') { sendResponse({ metadata: extractPageMetadata(document) }); return true; }
+  if (message?.type === 'GET_PAGE_METADATA') {
+    const current = parseRetailerProductUrl(location.href);
+    sendResponse({ metadata: current.supported ? extractPageMetadata(document, current.productId) : extractPageMetadata(document) });
+    return true;
+  }
   if (message?.type === 'AUTH_STATE_CHANGED') { authRevision++; actionBusy = false; void showForCurrentUrl(); }
   return false;
 });

@@ -39,4 +39,31 @@ describe('multi-retailer product URL parser', () => {
   ])('rejects unsupported or deceptive retailer URL %s', value => {
     expect(parseRetailerProductUrl(value).supported).toBe(false);
   });
+
+  it.each([
+    ['https://www.meesho.com/bhumi-warm-white-12-meter-decorative-42-warm-white-led-string-light-plug-for-indoor-outdoor-decorationsstring-lights-for-diy-party-home-decor-christmas-diwali-1/p/79g96n', 'MEESHO', '79g96n', 'https://www.meesho.com/bhumi-warm-white-12-meter-decorative-42-warm-white-led-string-light-plug-for-indoor-outdoor-decorationsstring-lights-for-diy-party-home-decor-christmas-diwali-1/p/79g96n'],
+    ['https://www.ajio.com/u-s-polo-assn-men-tailored-fit-shirt-with-logo-embroidery/p/442466815_blue', 'AJIO', '442466815', 'https://www.ajio.com/u-s-polo-assn-men-tailored-fit-shirt-with-logo-embroidery/p/442466815_blue'],
+    ['https://www.nykaafashion.com/nike-downshifter-14-men-s-road-running-shoe/p/26355138', 'NYKAA_FASHION', '26355138', 'https://www.nykaafashion.com/nike-downshifter-14-men-s-road-running-shoe/p/26355138'],
+    ['https://www.nykaa.com/wishcare-ceramide-lip-balm-with-spf-50-pa-watermelon/p/13784199?productId=13784199&pps=1', 'NYKAA', '13784199', 'https://www.nykaa.com/wishcare-ceramide-lip-balm-with-spf-50-pa-watermelon/p/13784199'],
+    ['https://www.croma.com/haier-m80f-190-cm-75-inch-3-star-4k-ultra-hd-mini-led-smart-google-tv-with-google-assistant-supported-2025-model-/p/319323', 'CROMA', '319323', 'https://www.croma.com/haier-m80f-190-cm-75-inch-3-star-4k-ultra-hd-mini-led-smart-google-tv-with-google-assistant-supported-2025-model-/p/319323']
+  ] as const)('recognizes %s', (url, retailer, productId, canonicalUrl) => {
+    expect(parseRetailerProductUrl(url)).toMatchObject({ supported: true, retailer, productId, canonicalUrl });
+  });
+
+  it('preserves AJIO URL-identified colour as a variant without mixing it into the product ID', () => {
+    expect(parseRetailerProductUrl('https://www.ajio.com/u-s-polo-assn-men-tailored-fit-shirt-with-logo-embroidery/p/442466815_blue'))
+      .toMatchObject({ supported: true, retailer: 'AJIO', productId: '442466815', variantId: 'blue', variantLabel: 'Blue' });
+  });
+
+  it.each([
+    'https://www.tatacliq.com/commerce/product-details?skuId=199318',
+    'https://www.nykaa.com.attacker.example/item/p/13784199',
+    'https://www.meesho.com.attacker.example/product/p/79g96n',
+    'http://www.croma.com/tv/p/319323',
+    'https://www.ajio.com/search?q=shirt',
+    'https://www.tataneu.com/commerce/product-details?skuId=199318',
+    'https://www.nykaa.com/lip-balm/p/13784199?productId=other'
+  ])('rejects unsupported or malformed added-retailer URL %s', url => {
+    expect(parseRetailerProductUrl(url).supported).toBe(false);
+  });
 });

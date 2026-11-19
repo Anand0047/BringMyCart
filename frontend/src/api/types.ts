@@ -11,8 +11,10 @@ export interface AuthResponse {
 
 export interface SavedProduct {
   id: string;
-  retailer?: 'AMAZON' | 'FLIPKART' | 'MYNTRA';
+  retailer?: 'AMAZON' | 'FLIPKART' | 'MYNTRA' | 'MEESHO' | 'AJIO' | 'NYKAA_FASHION' | 'NYKAA' | 'CROMA' | 'UNSUPPORTED';
   retailerProductId?: string;
+  variantKey?: string | null;
+  variantLabel?: string | null;
   asin: string | null;
   originalUrl: string;
   canonicalUrl: string;

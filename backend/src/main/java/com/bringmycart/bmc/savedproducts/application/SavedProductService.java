@@ -8,8 +8,6 @@ import com.bringmycart.bmc.identity.exception.ApiException;
 import com.bringmycart.bmc.identity.infrastructure.UserAccountRepository;
 import com.bringmycart.bmc.savedproducts.domain.SavedProduct;
 import com.bringmycart.bmc.savedproducts.infrastructure.SavedProductRepository;
-import com.bringmycart.bmc.savedproducts.validation.AmazonIndiaProductUrlValidator;
-import com.bringmycart.bmc.savedproducts.validation.ValidatedAmazonProductUrl;
 import com.bringmycart.bmc.retailer.RetailerProductUrlValidator;
 import com.bringmycart.bmc.retailer.ValidatedRetailerProductUrl;
 import com.bringmycart.bmc.savedproducts.api.dto.ExtensionProductMetadata;
@@ -51,14 +49,16 @@ public class SavedProductService {
         ValidatedRetailerProductUrl productUrl = urlValidator.validate(submittedUrl);
         UserAccount user = currentUser(authenticatedUserId);
 
-        if (savedProductRepository.existsByUser_IdAndRetailerAndRetailerProductId(
-            user.getId(), productUrl.retailer(), productUrl.productId())) {
+        String variantKey = productUrl.variantId() == null ? "" : productUrl.variantId();
+        if (savedProductRepository.existsByUser_IdAndRetailerAndRetailerProductIdAndVariantKey(
+            user.getId(), productUrl.retailer(), productUrl.productId(), variantKey)) {
             throw duplicateProduct();
         }
 
         try {
             SavedProduct savedProduct = new SavedProduct(user, productUrl.retailer(), productUrl.productId(),
-                productUrl.asin(), productUrl.originalUrl(), productUrl.canonicalUrl());
+                productUrl.asin(), productUrl.originalUrl(), productUrl.canonicalUrl(), variantKey,
+                productUrl.variantLabel());
             if (clientMetadata != null && productUrl.retailer() != com.bringmycart.bmc.retailer.Retailer.AMAZON) {
                 savedProduct.applyClientMetadata(clean(clientMetadata.title(), 500), clean(clientMetadata.brand(), 255),
                     safeImage(clientMetadata.imageUrl()), safePrice(clientMetadata.price()),

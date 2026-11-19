@@ -245,13 +245,23 @@ async function saveProduct(url: string, metadata?: import('../shared/messages').
 
 async function notifyTabs(syncStatus: SyncStatus): Promise<void> {
   try {
-    const tabs = await chrome.tabs.query({ url: ['https://amazon.in/*', 'https://www.amazon.in/*',
-      'https://flipkart.com/*', 'https://www.flipkart.com/*', 'https://myntra.com/*', 'https://www.myntra.com/*'] });
+    const tabs = await chrome.tabs.query({ url: retailerTabPatterns });
     await Promise.all(tabs.flatMap(tab => tab.id === undefined ? [] : [
       chrome.tabs.sendMessage(tab.id, { type: 'AUTH_STATE_CHANGED', authenticated: syncStatus === 'ready', syncStatus }).catch(() => undefined)
     ]));
   } catch { /* Amazon tab may close or not yet have a content script. */ }
 }
+
+const retailerTabPatterns = [
+  'https://amazon.in/*', 'https://www.amazon.in/*',
+  'https://flipkart.com/*', 'https://www.flipkart.com/*',
+  'https://myntra.com/*', 'https://www.myntra.com/*',
+  'https://meesho.com/*', 'https://www.meesho.com/*',
+  'https://ajio.com/*', 'https://www.ajio.com/*',
+  'https://nykaafashion.com/*', 'https://www.nykaafashion.com/*',
+  'https://nykaa.com/*', 'https://www.nykaa.com/*',
+  'https://croma.com/*', 'https://www.croma.com/*'
+];
 
 async function revokeSession(session: ExtensionSession): Promise<boolean> {
   try {
@@ -298,6 +308,7 @@ async function activeProduct(): Promise<ExtensionMessageResponse> {
       metadata = page?.metadata;
     } catch { /* A tab may not yet have the content script; save still works without fallback metadata. */ }
     return { supported: true, retailer: result.retailer, productId: result.productId, asin: result.asin,
+      variantId: result.variantId, variantLabel: result.variantLabel,
       canonicalUrl: result.canonicalUrl, originalUrl: result.originalUrl, metadata };
   } catch { return { supported: false }; }
 }
@@ -307,10 +318,11 @@ function trustedSender(sender: chrome.runtime.MessageSender): boolean {
   if (sender.url?.startsWith(`chrome-extension://${chrome.runtime.id}/`)) return true;
   try {
     const origin = new URL(sender.url ?? '').origin;
-    return ['https://amazon.in', 'https://www.amazon.in', 'https://flipkart.com',
-      'https://www.flipkart.com', 'https://myntra.com', 'https://www.myntra.com'].includes(origin);
+    return retailerOrigins.has(origin);
   } catch { return false; }
 }
+
+const retailerOrigins = new Set(retailerTabPatterns.map(pattern => pattern.replace(/\/\*$/, '')));
 
 chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendResponse: (response: ExtensionMessageResponse) => void) => {
   if (!trustedSender(sender)) { sendResponse({ ok: false, error: 'chrome_api_error' }); return; }

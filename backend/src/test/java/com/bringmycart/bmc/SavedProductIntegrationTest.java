@@ -16,6 +16,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -56,6 +57,7 @@ class SavedProductIntegrationTest {
     @Autowired SavedProductRepository savedProducts;
     @Autowired PasswordEncoder passwordEncoder;
     @Autowired JwtService jwtService;
+    @Autowired JdbcTemplate jdbcTemplate;
     @MockBean ProductEnrichmentDispatcher enrichmentDispatcher;
 
     @Test
@@ -207,6 +209,60 @@ class SavedProductIntegrationTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"url\":\"https://www.flipkart.com.attacker.test/p/itm1234567890?pid=MOBABCDE1234\"}"))
             .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void savesAjioColorVariantsSeparatelyAndDeduplicatesEachVariant() throws Exception {
+        UserAccount user = createUser();
+        String blue = "https://www.ajio.com/u-s-polo-assn-men-tailored-fit-shirt-with-logo-embroidery/p/442466815_blue?utm_source=tracking";
+        String red = "https://www.ajio.com/u-s-polo-assn-men-tailored-fit-shirt-with-logo-embroidery/p/442466815_red";
+        mockMvc.perform(post("/api/v1/saved-products").with(csrf()).header("Authorization", bearer(user))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"url\":\"" + blue + "\"}"))
+            .andExpect(status().isCreated()).andExpect(jsonPath("$.retailerProductId").value("442466815"))
+            .andExpect(jsonPath("$.variantKey").value("BLUE")).andExpect(jsonPath("$.variantLabel").value("BLUE"));
+        mockMvc.perform(post("/api/v1/saved-products").with(csrf()).header("Authorization", bearer(user))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"url\":\"" + red + "\"}"))
+            .andExpect(status().isCreated()).andExpect(jsonPath("$.variantKey").value("RED"));
+        mockMvc.perform(post("/api/v1/saved-products").with(csrf()).header("Authorization", bearer(user))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"url\":\"https://www.ajio.com/u-s-polo-assn-men-tailored-fit-shirt-with-logo-embroidery/p/442466815_blue?utm_campaign=other\"}"))
+            .andExpect(status().isConflict());
+    }
+
+    @Test
+    void savesCromaAndRejectsRetiredTataNeuProductUrls() throws Exception {
+        UserAccount user = createUser();
+        String croma = "https://www.croma.com/haier-m80f-190-cm-75-inch-3-star-4k-ultra-hd-mini-led-smart-google-tv-with-google-assistant-supported-2025-model-/p/319323";
+
+        mockMvc.perform(post("/api/v1/saved-products").with(csrf()).header("Authorization", bearer(user))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"url\":\"" + croma + "\"}"))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.retailer").value("CROMA"))
+            .andExpect(jsonPath("$.retailerProductId").value("319323"));
+
+        mockMvc.perform(post("/api/v1/saved-products").with(csrf()).header("Authorization", bearer(user))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"url\":\"https://www.tataneu.com/commerce/product-details?skuId=199318&skuName=another-label\"}"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value("invalid_product_url"));
+    }
+
+    @Test
+    void retiredTataNeuRowsRemainReadableAsUnsupportedAndKeepTheirOriginalLink() throws Exception {
+        UserAccount user = createUser();
+        UUID savedProductId = UUID.randomUUID();
+        jdbcTemplate.update("""
+                INSERT INTO saved_products (id, user_id, asin, original_url, canonical_url, retailer,
+                    retailer_product_id, variant_key, metadata_source, enrichment_status, created_at, updated_at)
+                VALUES (?, ?, NULL, ?, ?, 'TATA_NEU', '199318', '', 'URL_ONLY', 'FAILED', now(), now())
+                """, savedProductId, user.getId(),
+            "https://www.tataneu.com/commerce/product-details?skuId=199318",
+            "https://www.tataneu.com/commerce/product-details?skuId=199318");
+
+        mockMvc.perform(get("/api/v1/saved-products").header("Authorization", bearer(user)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.content[0].id").value(savedProductId.toString()))
+            .andExpect(jsonPath("$.content[0].retailer").value("UNSUPPORTED"))
+            .andExpect(jsonPath("$.content[0].originalUrl").value("https://www.tataneu.com/commerce/product-details?skuId=199318"));
     }
 
     @Test

@@ -6,8 +6,10 @@ import java.util.UUID;
 
 import com.bringmycart.bmc.identity.domain.UserAccount;
 import com.bringmycart.bmc.retailer.Retailer;
+import com.bringmycart.bmc.retailer.RetailerAttributeConverter;
 import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -34,12 +36,18 @@ public class SavedProduct {
     @JoinColumn(name = "user_id", nullable = false)
     private UserAccount user;
 
-    @Enumerated(EnumType.STRING)
+    @Convert(converter = RetailerAttributeConverter.class)
     @Column(nullable = false, length = 16)
     private Retailer retailer;
 
     @Column(name = "retailer_product_id", nullable = false, length = 80)
     private String retailerProductId;
+
+    @Column(name = "variant_key", nullable = false, length = 100)
+    private String variantKey = "";
+
+    @Column(name = "variant_label", length = 255)
+    private String variantLabel;
 
     @Column(length = 10)
     private String asin;
@@ -159,12 +167,19 @@ public class SavedProduct {
 
     public SavedProduct(UserAccount user, Retailer retailer, String retailerProductId, String asin,
                         String originalUrl, String canonicalUrl) {
+        this(user, retailer, retailerProductId, asin, originalUrl, canonicalUrl, null, null);
+    }
+
+    public SavedProduct(UserAccount user, Retailer retailer, String retailerProductId, String asin,
+                        String originalUrl, String canonicalUrl, String variantKey, String variantLabel) {
         this.user = user;
         this.retailer = retailer;
         this.retailerProductId = retailerProductId;
         this.asin = asin;
         this.originalUrl = originalUrl;
         this.canonicalUrl = canonicalUrl;
+        this.variantKey = variantKey == null ? "" : variantKey;
+        this.variantLabel = variantLabel;
         this.currency = retailer == Retailer.AMAZON ? "INR" : null;
         this.metadataSource = "URL_ONLY";
         this.enrichmentStatus = EnrichmentStatus.PENDING;
@@ -254,6 +269,8 @@ public class SavedProduct {
     public String getAsin() { return asin; }
     public Retailer getRetailer() { return retailer; }
     public String getRetailerProductId() { return retailerProductId; }
+    public String getVariantKey() { return variantKey; }
+    public String getVariantLabel() { return variantLabel; }
     public String getParentAsin() { return parentAsin; }
     public String getOriginalUrl() { return originalUrl; }
     public String getCanonicalUrl() { return canonicalUrl; }

@@ -1,8 +1,10 @@
 import { LoaderCircle, PackageOpen } from 'lucide-react';
+import axios from 'axios';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { errorMessage } from '../api/client';
 import { savedProductsApi } from '../api/savedProductsApi';
 import type { PageResponse, SavedProduct } from '../api/types';
+import type { ApiError } from '../api/types';
 import { AppLayout } from '../components/AppLayout';
 import { ProductCard } from '../components/ProductCard';
 import { SaveProductForm } from '../components/SaveProductForm';
@@ -31,13 +33,26 @@ export function DashboardPage() {
     return () => window.clearInterval(timer);
   }, [load, needsPolling, pageNumber]);
 
-  async function save(url: string) {
+  async function save(url: string): Promise<boolean> {
     try {
       await savedProductsApi.save(url);
       setNotice('Product saved. Metadata is being retrieved in the background.');
+      setError(null);
       setPageNumber(0);
       await load(0, true);
-    } catch (exception) { setError(errorMessage(exception, 'Unable to save this product.')); }
+      return true;
+    } catch (exception) {
+      if (axios.isAxiosError<ApiError>(exception) && exception.response?.status === 409
+        && exception.response.data?.code === 'duplicate_saved_product') {
+        setError(null);
+        setNotice('This product is already in your saved products.');
+        setPageNumber(0);
+        await load(0, true);
+        return true;
+      }
+      setError(errorMessage(exception, 'Unable to save this product.'));
+      return false;
+    }
   }
 
   async function refresh(product: SavedProduct) {
@@ -62,7 +77,7 @@ export function DashboardPage() {
   }
 
   return <AppLayout>
-    <section className="mb-7 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-sm font-semibold uppercase tracking-widest text-sky-700">Centralized wishlist</p><h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-950">Saved products</h1><p className="mt-2 text-slate-600">Keep your Amazon India, Flipkart, and Myntra finds in one place.</p></div>{page && <p className="text-sm text-slate-500">{page.totalElements} saved {page.totalElements === 1 ? 'product' : 'products'}</p>}</section>
+    <section className="mb-7 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-sm font-semibold uppercase tracking-widest text-sky-700">Centralized wishlist</p><h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-950">Saved products</h1><p className="mt-2 text-slate-600">Keep finds from Amazon India, Flipkart, Myntra, Meesho, AJIO, Nykaa Fashion, Nykaa, and Croma in one place.</p></div>{page && <p className="text-sm text-slate-500">{page.totalElements} saved {page.totalElements === 1 ? 'product' : 'products'}</p>}</section>
     <SaveProductForm onSave={save} disabled={loading} />
     {notice && <p role="status" className="mt-4 rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{notice}</p>}
     {error && <p role="alert" className="mt-4 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-800">{error}</p>}
@@ -74,5 +89,5 @@ export function DashboardPage() {
 }
 
 function EmptyState() {
-  return <div className="mt-7 grid min-h-64 place-items-center rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center"><div><PackageOpen className="mx-auto text-slate-400" size={38} /><h2 className="mt-3 font-bold text-slate-800">Your wishlist is ready</h2><p className="mt-1 text-sm text-slate-500">Paste an Amazon India product URL above to save your first item.</p></div></div>;
+  return <div className="mt-7 grid min-h-64 place-items-center rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center"><div><PackageOpen className="mx-auto text-slate-400" size={38} /><h2 className="mt-3 font-bold text-slate-800">Your wishlist is ready</h2><p className="mt-1 text-sm text-slate-500">Paste a supported retailer product URL above to save your first item.</p></div></div>;
 }

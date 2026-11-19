@@ -27,7 +27,7 @@ export interface ProductPageMetadata {
 
 export type ExtensionMessageResponse =
   | { authenticated: boolean; syncStatus?: 'ready' | 'signed_out' | 'sync_required' | 'synchronizing'; user?: ExtensionUser }
-  | { supported: boolean; retailer?: 'AMAZON' | 'FLIPKART' | 'MYNTRA'; productId?: string; asin?: string | null; canonicalUrl?: string; originalUrl?: string; metadata?: ProductPageMetadata }
+  | { supported: boolean; retailer?: 'AMAZON' | 'FLIPKART' | 'MYNTRA' | 'MEESHO' | 'AJIO' | 'NYKAA_FASHION' | 'NYKAA' | 'CROMA'; productId?: string; asin?: string | null; variantId?: string; variantLabel?: string; canonicalUrl?: string; originalUrl?: string; metadata?: ProductPageMetadata }
   | { metadata?: ProductPageMetadata }
   | { ok: true; result?: 'saved' | 'duplicate'; asin?: string }
   | { ok: false; error: 'chrome_api_error' | 'authorization_failed' | 'callback_mismatch' | 'authentication_required' | 'account_sync_required' | 'duplicate' | 'invalid_product' | 'server_error' | 'network_error' | 'save_in_progress' };
