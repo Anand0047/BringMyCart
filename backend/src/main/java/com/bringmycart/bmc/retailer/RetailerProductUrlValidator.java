@@ -16,6 +16,7 @@ import org.springframework.stereotype.Component;
 public class RetailerProductUrlValidator {
     private static final Set<String> FLIPKART_HOSTS = Set.of("flipkart.com", "www.flipkart.com");
     private static final Set<String> MYNTRA_HOSTS = Set.of("myntra.com", "www.myntra.com");
+    private static final Set<String> NEW_RETAILER_HOSTS = Set.of("meesho.com", "www.meesho.com", "ajio.com", "www.ajio.com", "nykaafashion.com", "www.nykaafashion.com", "nykaa.com", "www.nykaa.com", "croma.com", "www.croma.com");
     private final AmazonIndiaProductUrlValidator amazonValidator;
 
     public RetailerProductUrlValidator(AmazonIndiaProductUrlValidator amazonValidator) {
@@ -33,7 +34,48 @@ public class RetailerProductUrlValidator {
         }
         if (FLIPKART_HOSTS.contains(host)) return flipkart(uri, submittedUrl);
         if (MYNTRA_HOSTS.contains(host)) return myntra(uri, submittedUrl);
+        if (NEW_RETAILER_HOSTS.contains(host)) return additionalRetailer(uri, submittedUrl, host);
         throw invalidUrl();
+    }
+
+    private ValidatedRetailerProductUrl additionalRetailer(URI uri, String original, String host) {
+        List<String> path = segments(uri.getRawPath());
+        String id;
+        Retailer retailer;
+        String canonical;
+        String variant = null;
+        if (host.endsWith("meesho.com")) {
+            retailer = Retailer.MEESHO;
+            if (path.size() < 2 || !path.get(path.size() - 2).equals("p") || !path.getLast().matches("[a-z0-9]{5,24}")) throw invalidUrl();
+            id = path.getLast(); canonical = "https://www.meesho.com/" + String.join("/", path);
+        } else if (host.endsWith("ajio.com")) {
+            retailer = Retailer.AJIO;
+            String productPath = path.isEmpty() ? "" : path.getLast();
+            if (path.size() < 2 || !path.get(path.size() - 2).equalsIgnoreCase("p") || !productPath.matches("[A-Za-z0-9_-]{5,80}")) throw invalidUrl();
+            String[] idAndVariant = productPath.split("_", 2); id = idAndVariant[0];
+            if (!id.matches("\\d{5,20}")) throw invalidUrl();
+            if (idAndVariant.length == 2) {
+                if (!idAndVariant[1].matches("[A-Za-z0-9-]{1,32}")) throw invalidUrl();
+                variant = idAndVariant[1].toUpperCase(Locale.ROOT);
+            }
+            canonical = "https://www.ajio.com/" + String.join("/", path);
+        } else if (host.endsWith("nykaafashion.com")) {
+            retailer = Retailer.NYKAA_FASHION;
+            if (path.size() < 2 || !path.getLast().matches("\\d{5,20}") || !path.get(path.size() - 2).equalsIgnoreCase("p")) throw invalidUrl();
+            id = path.getLast(); canonical = "https://www.nykaafashion.com/" + String.join("/", path);
+        } else if (host.endsWith("nykaa.com")) {
+            retailer = Retailer.NYKAA;
+            if (path.size() < 2 || !path.getLast().matches("\\d{5,20}") || !path.get(path.size() - 2).equalsIgnoreCase("p")) throw invalidUrl();
+            id = path.getLast();
+            List<String> queryIds = queryParameters(uri.getRawQuery(), "productId");
+            if (!queryIds.isEmpty() && (queryIds.size() != 1 || !queryIds.getFirst().equals(id))) throw invalidUrl();
+            canonical = "https://www.nykaa.com/" + String.join("/", path);
+        } else {
+            retailer = Retailer.CROMA;
+            if (path.size() < 2 || !path.getLast().matches("\\d{4,20}") || !path.get(path.size() - 2).equalsIgnoreCase("p")) throw invalidUrl();
+            id = path.getLast(); canonical = "https://www.croma.com/" + String.join("/", path);
+        }
+        return new ValidatedRetailerProductUrl(retailer, id, original, canonical, null, variant, variant);
     }
 
     private ValidatedRetailerProductUrl flipkart(URI uri, String original) {

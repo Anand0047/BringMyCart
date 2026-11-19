@@ -26,4 +26,19 @@ describe('retailer page metadata fallback', () => {
     expect(metadata.imageUrl).toBeUndefined();
     expect(metadata.availability).toBe('UNKNOWN');
   });
+
+  it('uses structured metadata only from the requested product identity', () => {
+    document.head.innerHTML = `
+      <script type="application/ld+json">{"@graph":[
+        {"@type":"Product","sku":"OTHER-123","name":"Recommended product","offers":{"price":"100","priceCurrency":"INR","availability":"https://schema.org/InStock"}},
+        {"@type":"Product","sku":"319323","name":"Haier television","brand":{"name":"Haier"},"image":"https://images.example.test/tv.jpg","offers":{"price":"5247.00","priceCurrency":"INR","availability":"https://schema.org/OutOfStock"}}
+      ]}</script>`;
+    const result = extractPageMetadata(document, '319323');
+    expect(result).toMatchObject({ title: 'Haier television', brand: 'Haier', imageUrl: 'https://images.example.test/tv.jpg', price: 5247, currency: 'INR', availability: 'OUT_OF_STOCK' });
+  });
+
+  it('ignores malformed JSON-LD and non-HTTPS images', () => {
+    document.head.innerHTML = '<script type="application/ld+json">{"@type":"Product",</script><meta property="og:image" content="http://insecure.example.test/item.jpg">';
+    expect(extractPageMetadata(document, '13784199').imageUrl).toBeUndefined();
+  });
 });

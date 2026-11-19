@@ -85,3 +85,34 @@ test('keeps long titles and failed-enrichment actions usable', async () => {
   await userEvent.click(screen.getByLabelText(/retry a very long product title/i));
   expect(onRefresh).toHaveBeenCalledWith(failedProduct);
 });
+
+test.each([
+  ['MEESHO', 'Meesho'], ['AJIO', 'AJIO'],
+  ['NYKAA_FASHION', 'Nykaa Fashion'], ['NYKAA', 'Nykaa'], ['CROMA', 'Croma']
+] as const)('renders %s retailer and known variant label', (retailer, label) => {
+  const retailerProduct: SavedProduct = {
+    ...product, retailer, retailerProductId: '12345678', asin: null, brand: null,
+    variantKey: retailer === 'AJIO' ? 'blue' : null,
+    variantLabel: retailer === 'AJIO' ? 'Blue' : null,
+    originalUrl: `https://www.${retailer.toLowerCase()}.example/product/12345678`
+  };
+  render(<ProductCard product={retailerProduct} onRefresh={vi.fn()} onDelete={vi.fn()} />);
+  expect(screen.getByText(label)).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: new RegExp(`buy on ${label}`, 'i') })).toHaveAttribute('href', retailerProduct.originalUrl);
+  if (retailer === 'AJIO') expect(screen.getByText('Selected variant: Blue')).toBeInTheDocument();
+});
+
+test('shows legacy retired-retailer products without re-advertising the retailer', () => {
+  const legacyProduct: SavedProduct = {
+    ...product,
+    retailer: 'UNSUPPORTED',
+    retailerProductId: '199318',
+    asin: null,
+    title: 'Previously saved item',
+    originalUrl: 'https://retired.example/product/199318'
+  };
+  render(<ProductCard product={legacyProduct} onRefresh={vi.fn()} onDelete={vi.fn()} />);
+  expect(screen.getByText(/unsupported retailer/i)).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: /open original link/i })).toHaveAttribute('href', legacyProduct.originalUrl);
+  expect(screen.queryByText(/tata neu/i)).not.toBeInTheDocument();
+});

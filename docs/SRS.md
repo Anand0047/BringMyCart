@@ -5,8 +5,8 @@
 | Field | Value |
 | --- | --- |
 | Status | Draft — pending product and architecture approval |
-| Version | 0.2 |
-| Date | 2026-11-14 |
+| Version | 0.5 |
+| Date | 2026-11-19 |
 | Scope | MVP requirements only |
 | Owners | BringMyCart product and engineering |
 
@@ -15,6 +15,8 @@
 | 0.1 | 2026-11-14 | Initial requirements baseline |
 | 0.2 | 2026-11-14 | Confirmed Java 21, Maven, PostgreSQL, React.js with Vite, Spring Security, and JWT-based authentication |
 | 0.3 | 2026-11-19 | Authorized Phase 5A scope expansion to Flipkart and Myntra with Scrape.do metadata enrichment; preserved all FR identifiers and unrelated requirements |
+| 0.4 | 2026-11-19 | Authorized Phase 5B expansion to Meesho, Tata Neu, AJIO, Nykaa Fashion, Nykaa, and Croma; URL-derived known variants are retained |
+| 0.5 | 2026-11-19 | Retired Tata Neu from active support; preserved existing records as unsupported for backward compatibility |
 
 ## 2. Introduction
 
@@ -22,11 +24,11 @@ BringMyCart (BMC) lets users save products they independently find on retailer s
 
 ## 3. Product Overview, Objectives, and Problem Statement
 
-Users currently retain product choices separately across retailer carts and wishlists. BMC centralizes Amazon India product references in an account, exposes them through a React.js dashboard, and can redirect users to Amazon through an eligible affiliate link. Subject to external verification, qualifying affiliate earnings may yield user reward points redeemable for administrator-provided gift cards. Objectives are a usable centralized collection, secure gift-card fulfillment, and a future-ready shared backend without committing to unverified affiliate incentives.
+Users currently retain product choices separately across retailer carts and wishlists. BMC centralizes supported retailer product references in an account, exposes them through a React.js dashboard, and retains original product links. Subject to external verification, qualifying affiliate earnings may yield user reward points redeemable for administrator-provided gift cards. Objectives are a usable centralized collection, secure gift-card fulfillment, and a future-ready shared backend without committing to unverified affiliate incentives.
 
 ## 4. Scope and Boundaries
 
-The original MVP baseline supports Amazon India (`amazon.in`). The product-owner-authorized Phase 5A scope amendment adds Flipkart (`flipkart.com`) and Myntra (`myntra.com`) product saving through the existing React.js customer website, Chrome Manifest V3 extension, and Java/Spring Boot modular-monolith backend. It excludes all retailer-cart integration, retailer credential collection, payment/checkout, purchase proof from redirects, mobile clients, retailers beyond these three, price comparison/history, AI recommendations, automatic retailer matching, and automated gift-card procurement. Android and other additional retailers remain future scope.
+The original MVP baseline supports Amazon India (`amazon.in`). Authorized Phase 5A added Flipkart and Myntra; Phase 5B added Meesho, AJIO, Nykaa Fashion, Nykaa, and Croma through the existing React.js customer website, Chrome Manifest V3 extension, and Java/Spring Boot modular-monolith backend. Tata Neu was retired from active support by the 0.5 scope decision. The current active set is eight retailers. Existing Tata Neu saved records are retained and presented as unsupported; new Tata Neu URLs are rejected. It excludes retailer-cart integration, retailer credential collection, payment/checkout, purchase proof from redirects, mobile clients, retailers outside this set, price comparison/history, AI recommendations, automatic retailer matching, and automated gift-card procurement. The Phase 5B code is subject to the verification status in the phase report; requirements do not imply live extraction quality has been established.
 
 ## 5. User Roles and Permissions
 
@@ -65,11 +67,11 @@ Administrators must not receive broad access by default; authorization is enforc
 
 ### FR-003 — Supported-Page Detection
 
-**Description / expected behavior:** The Manifest V3 extension determines whether the active tab is a supported Amazon India, Flipkart, or Myntra product page and exposes Save Item only when appropriate. Available product information may include retailer product ID, title, original URL, image, and price where permitted; no field is guaranteed. **Acceptance criteria:** unsupported retailer pages and invalid product URLs show an explanatory state and do not submit a save; missing product fields are handled without fabricated data. **Dependencies:** approved product URL rules and permitted metadata method. **Status:** Confirmed; Phase 5A enables only these three retailers.
+**Description / expected behavior:** The Manifest V3 extension determines whether the active tab is a supported Amazon India, Flipkart, Myntra, Meesho, AJIO, Nykaa Fashion, Nykaa, or Croma product page and exposes Save Item only when appropriate. Tata Neu is retired; its URLs are unsupported. Available product information may include retailer product ID, title, original URL, image, and price where permitted; no field is guaranteed. A selected variant is retained only when reliably identified (currently the AJIO URL suffix may identify a color). **Acceptance criteria:** unsupported retailer pages and invalid product URLs show an explanatory state and do not submit a save; missing product fields are handled without fabricated data. **Dependencies:** approved product URL rules and permitted metadata method. **Status:** Confirmed for the eight active retailers; live product extraction coverage remains subject to verification.
 
 ### FR-004 — Authenticated Item Save
 
-**Description / expected behavior:** An authenticated customer may save the original product URL and permitted available metadata to their BMC collection. Metadata may include ASIN, title, image, price, rating, and review count only where legally and technically permitted, and may be incomplete. Customer review summaries and feedback topics require separate verified provider storage/usage permission before persistence or display. The backend validates identity and submission; the extension never supplies trusted identity alone. **Acceptance criteria:** success is confirmed only after backend acceptance; duplicate saves do not create unwanted duplicates; network/failure messages permit safe retry; original URL and available metadata are retained without fabricating absent fields. **Dependencies:** FR-001, FR-003, metadata design (TBD), verified provider terms for summaries/topics. **Status:** Confirmed; summary/topic storage remains blocked pending verification.
+**Description / expected behavior:** An authenticated customer may save the original product URL and permitted available metadata to their BMC collection. Metadata may include ASIN, title, image, price, rating, and review count only where legally and technically permitted, and may be incomplete. Customer review summaries and feedback topics require separate verified provider storage/usage permission before persistence or display. The backend validates identity and submission; the extension never supplies trusted identity alone. Duplicate identity is scoped to the customer and retailer product; a reliably identified variant may be saved separately. **Acceptance criteria:** success is confirmed only after backend acceptance; duplicate saves do not create unwanted duplicates; network/failure messages permit safe retry; original URL and available metadata are retained without fabricating absent fields. **Dependencies:** FR-001, FR-003, metadata design (TBD), verified provider terms for summaries/topics. **Status:** Confirmed; summary/topic storage remains blocked pending verification.
 
 ### FR-005 — Saved-Product Management
 

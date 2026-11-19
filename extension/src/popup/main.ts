@@ -17,7 +17,7 @@ const authButton = document.querySelector<HTMLButtonElement>('#auth')!;
 const logoutButton = document.querySelector<HTMLButtonElement>('#logout')!;
 let productUrl: string | null = null;
 let productMetadata: ProductPageMetadata | undefined;
-let currentRetailer = 'retailer';
+let currentRetailer = 'Retailer';
 let ready = false;
 let statusRevision = 0;
 
@@ -38,14 +38,15 @@ async function loadProduct() {
     productUrl = null;
     productMetadata = undefined;
     details.hidden = true;
-    productStatus.textContent = 'Open an Amazon India product page to save it here.';
+    productStatus.textContent = 'Open a supported retailer product page to save it here.';
     saveButton.disabled = true;
     return;
   }
-  currentRetailer = response.retailer ?? 'retailer';
+  currentRetailer = retailerName(response.retailer);
   productUrl = response.originalUrl ?? response.canonicalUrl ?? null;
   productMetadata = response.metadata;
-  asinElement.textContent = response.asin ? `Amazon ASIN: ${response.asin}` : `${currentRetailer} product: ${response.productId ?? ''}`;
+  asinElement.textContent = response.asin ? `Amazon ASIN: ${response.asin}`
+    : `${currentRetailer} product: ${response.productId ?? ''}${response.variantLabel ? ` · ${response.variantLabel}` : ''}`;
   urlElement.href = response.canonicalUrl ?? '#';
   urlElement.textContent = 'View product page';
   details.hidden = false;
@@ -132,6 +133,15 @@ saveButton.addEventListener('click', async () => {
 });
 
 document.querySelector<HTMLButtonElement>('#dashboard')!.addEventListener('click', () => chrome.tabs.create({ url: dashboardUrl }));
+
+function retailerName(retailer?: string): string {
+  const names: Record<string, string> = {
+    AMAZON: 'Amazon India', FLIPKART: 'Flipkart', MYNTRA: 'Myntra', MEESHO: 'Meesho',
+    AJIO: 'AJIO', NYKAA_FASHION: 'Nykaa Fashion', NYKAA: 'Nykaa', CROMA: 'Croma'
+  };
+  return retailer ? names[retailer] ?? 'Retailer' : 'Retailer';
+}
+
 chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName === 'session' && changes['bmc-extension-sync-status']) {
     statusRevision++;

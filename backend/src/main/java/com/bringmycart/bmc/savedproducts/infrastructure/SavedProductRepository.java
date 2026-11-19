@@ -21,6 +21,9 @@ public interface SavedProductRepository extends JpaRepository<SavedProduct, UUID
 
     boolean existsByUser_IdAndRetailerAndRetailerProductId(UUID userId, Retailer retailer, String retailerProductId);
 
+    boolean existsByUser_IdAndRetailerAndRetailerProductIdAndVariantKey(UUID userId, Retailer retailer,
+                                                                        String retailerProductId, String variantKey);
+
     Optional<SavedProduct> findByIdAndUser_Id(UUID id, UUID userId);
 
     Page<SavedProduct> findAllByUser_Id(UUID userId, Pageable pageable);

@@ -44,4 +44,35 @@ class RetailerProductUrlValidatorTest {
             assertThatThrownBy(() -> validator.validate(url)).isInstanceOf(RuntimeException.class);
         }
     }
+
+    @Test
+    void validatesRetainedPhaseFiveBRetailerExamplesAndStableIdentities() {
+        assertProduct("https://www.meesho.com/bhumi-warm-white-12-meter-decorative-42-warm-white-led-string-light-plug-for-indoor-outdoor-decorationsstring-lights-for-diy-party-home-decor-christmas-diwali-1/p/79g96n", Retailer.MEESHO, "79g96n");
+        assertThatThrownBy(() -> validator.validate("https://www.tataneu.com/commerce/product-details?skuId=199318"))
+            .isInstanceOf(RuntimeException.class);
+        var ajio = validator.validate("https://www.ajio.com/u-s-polo-assn-men-tailored-fit-shirt-with-logo-embroidery/p/442466815_blue");
+        assertThat(ajio.productId()).isEqualTo("442466815");
+        assertThat(ajio.variantId()).isEqualTo("BLUE");
+        assertProduct("https://www.nykaafashion.com/nike-downshifter-14-men-s-road-running-shoe/p/26355138", Retailer.NYKAA_FASHION, "26355138");
+        assertProduct("https://www.nykaa.com/wishcare-ceramide-lip-balm-with-spf-50-pa-watermelon/p/13784199?productId=13784199&pps=1", Retailer.NYKAA, "13784199");
+        assertProduct("https://www.croma.com/haier-m80f-190-cm-75-inch-3-star-4k-ultra-hd-mini-led-smart-google-tv-with-google-assistant-supported-2025-model-/p/319323", Retailer.CROMA, "319323");
+    }
+
+    @Test
+    void rejectsRetiredTataNeuAndDistinguishesOtherRetailerHosts() {
+        assertThatThrownBy(() -> validator.validate("https://www.tataneu.com/commerce/product-details?skuId=199318"))
+            .isInstanceOf(RuntimeException.class);
+        assertThatThrownBy(() -> validator.validate("https://www.tataneu.com/commerce/search?skuId=199318"))
+            .isInstanceOf(RuntimeException.class);
+        assertThatThrownBy(() -> validator.validate("https://nykaa.com.attacker.test/product/p/13784199")).isInstanceOf(RuntimeException.class);
+        assertThat(validator.validate("https://www.nykaafashion.com/item/p/26355138").retailer()).isEqualTo(Retailer.NYKAA_FASHION);
+        assertThat(validator.validate("https://www.nykaa.com/item/p/13784199").retailer()).isEqualTo(Retailer.NYKAA);
+    }
+
+    private void assertProduct(String url, Retailer retailer, String productId) {
+        var product = validator.validate(url);
+        assertThat(product.retailer()).isEqualTo(retailer);
+        assertThat(product.productId()).isEqualTo(productId);
+        assertThat(product.canonicalUrl()).doesNotContain("utm_");
+    }
 }

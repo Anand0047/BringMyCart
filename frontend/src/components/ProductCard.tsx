@@ -19,8 +19,7 @@ function timestamp(value: string | null) {
 }
 
 export function ProductCard({ product, onRefresh, onDelete, busy }: ProductCardProps) {
-  const retailerLabel = product.retailer === 'FLIPKART' ? 'Flipkart'
-    : product.retailer === 'MYNTRA' ? 'Myntra' : 'Amazon India';
+  const retailerLabel = retailerName(product.retailer);
   const identity = product.asin ?? product.retailerProductId ?? 'product';
   const pending = product.enrichmentStatus === 'PENDING' || product.enrichmentStatus === 'PROCESSING';
   const finalPrice = price(product.finalPrice, product.currency);
@@ -36,8 +35,9 @@ export function ProductCard({ product, onRefresh, onDelete, busy }: ProductCardP
         <div className="absolute left-3 top-3"><StatusBadge status={product.enrichmentStatus} /></div>
       </div>
       <div className="flex min-w-0 flex-1 flex-col p-4">
-        <p className="truncate text-xs font-semibold uppercase tracking-wide text-sky-700">{product.brand ?? retailerLabel}</p>
+        <p className="truncate text-xs font-semibold uppercase tracking-wide text-sky-700">{retailerLabel}{product.brand ? ` · ${product.brand}` : ''}</p>
         <h2 className="mt-1 min-h-12 break-words text-base font-bold leading-6 text-slate-900 line-clamp-2">{product.title ?? `Product information unavailable (${identity})`}</h2>
+        {product.variantLabel && <p className="mt-1 text-sm text-slate-600">Selected variant: {product.variantLabel}</p>}
         <div className="mt-3 flex min-h-14 flex-wrap content-start items-baseline gap-x-2 gap-y-1">
           {finalPrice && <span className="text-xl font-bold leading-7 text-slate-950">{finalPrice}</span>}
           {canStrike && <span className="text-sm text-slate-400 line-through">{originalPrice}</span>}
@@ -51,11 +51,19 @@ export function ProductCard({ product, onRefresh, onDelete, busy }: ProductCardP
         </div>
         <p className="mt-2 min-h-8 text-xs leading-4 text-slate-500">{product.enrichmentStatus === 'FAILED' ? `Metadata retrieval failed. You can retry manually.${fetched ? ` Last successful check ${fetched}.` : ''}` : fetched ? `Last checked ${fetched}` : pending ? 'Retrieving permitted product metadata…' : 'Metadata unavailable.'}</p>
         <div className="mt-auto grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 pt-4">
-          <a className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" href={product.originalUrl} target="_blank" rel="noreferrer"><ExternalLink size={15} /> Buy on {retailerLabel}</a>
+          <a className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" href={product.originalUrl} target="_blank" rel="noreferrer"><ExternalLink size={15} /> {retailerLabel === 'Unsupported retailer' ? 'Open original link' : `Buy on ${retailerLabel}`}</a>
           <button onClick={() => onRefresh(product)} disabled={busy || pending} aria-label={`${refreshLabel} ${product.title ?? identity}`} className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-300"><RefreshCw className={busy ? 'animate-spin' : ''} size={18} /></button>
           <button onClick={() => onDelete(product)} disabled={busy} aria-label={`Delete ${product.title ?? identity}`} className="rounded-lg border border-rose-100 p-2 text-rose-600 hover:bg-rose-50 disabled:cursor-not-allowed disabled:text-rose-300"><Trash2 size={18} /></button>
         </div>
       </div>
     </article>
   );
+}
+
+function retailerName(retailer: SavedProduct['retailer']): string {
+  const labels: Record<NonNullable<SavedProduct['retailer']>, string> = {
+    AMAZON: 'Amazon India', FLIPKART: 'Flipkart', MYNTRA: 'Myntra', MEESHO: 'Meesho',
+    AJIO: 'AJIO', NYKAA_FASHION: 'Nykaa Fashion', NYKAA: 'Nykaa', CROMA: 'Croma', UNSUPPORTED: 'Unsupported retailer'
+  };
+  return retailer ? labels[retailer] : 'Amazon India';
 }

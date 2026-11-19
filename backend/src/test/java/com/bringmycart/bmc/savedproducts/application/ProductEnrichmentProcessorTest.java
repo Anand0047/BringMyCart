@@ -74,4 +74,26 @@ class ProductEnrichmentProcessorTest {
         verify(state).completeUsingExistingFallback(id);
         verify(state, never()).fail(id, com.bringmycart.bmc.savedproducts.domain.EnrichmentFailureCategory.RATE_LIMITED, true);
     }
+
+    @Test
+    void doesNotRouteHistoricalUnsupportedProductsToScrapeDo() {
+        UUID id = UUID.randomUUID();
+        ProductEnrichmentStateService state = mock(ProductEnrichmentStateService.class);
+        ProductMetadataProvider amazon = mock(ProductMetadataProvider.class);
+        ScrapeDoProductMetadataProvider scrapeDo = mock(ScrapeDoProductMetadataProvider.class);
+        when(state.claim(id)).thenReturn(Optional.of(new ProductEnrichmentStateService.EnrichmentJob(id,
+            Retailer.UNSUPPORTED, "199318", null,
+            "https://www.tataneu.com/commerce/product-details?skuId=199318")));
+        when(state.completeUsingExistingFallback(id)).thenReturn(false);
+        when(state.fail(id, com.bringmycart.bmc.savedproducts.domain.EnrichmentFailureCategory.INVALID_RESPONSE,
+            false)).thenReturn(true);
+
+        new ProductEnrichmentProcessor(state, amazon, scrapeDo).process(id);
+
+        verify(scrapeDo, never()).fetch(Retailer.UNSUPPORTED,
+            "https://www.tataneu.com/commerce/product-details?skuId=199318");
+        verify(amazon, never()).fetch("199318");
+        verify(state).fail(id,
+            com.bringmycart.bmc.savedproducts.domain.EnrichmentFailureCategory.INVALID_RESPONSE, false);
+    }
 }

@@ -91,4 +91,47 @@ class RetailerHtmlMetadataExtractorTest {
         assertThat(metadata.imageUrl()).isNull();
         assertThat(metadata.currency()).isEqualTo("INR");
     }
+
+    @Test
+    void mapsSanitizedStructuredProductFixturesForTheSixPhaseFiveBRetailers() {
+        record Fixture(Retailer retailer, String id, String idField, String url) { }
+        var fixtures = java.util.List.of(
+            new Fixture(Retailer.MEESHO, "79g96n", "sku", "https://www.meesho.com/decor-light/p/79g96n"),
+            new Fixture(Retailer.AJIO, "442466815", "sku", "https://www.ajio.com/shirt/p/442466815_blue"),
+            new Fixture(Retailer.NYKAA_FASHION, "26355138", "productID", "https://www.nykaafashion.com/shoe/p/26355138"),
+            new Fixture(Retailer.NYKAA, "13784199", "productId", "https://www.nykaa.com/lip-balm/p/13784199"),
+            new Fixture(Retailer.CROMA, "319323", "sku", "https://www.croma.com/television/p/319323")
+        );
+        for (Fixture fixture : fixtures) {
+            String html = """
+                <script type="application/ld+json">{"@type":"Product","name":"Unrelated recommendation","sku":"different-id"}</script>
+                <script type="application/ld+json">{"@type":"Product","name":"Target product","%s":"%s","image":"https://cdn.example.test/target.jpg","offers":{"price":"1234.50","highPrice":"1999.00","priceCurrency":"INR","availability":"https://schema.org/InStock"}}</script>
+                """.formatted(fixture.idField(), fixture.id());
+            var metadata = extractor.extract(fixture.retailer(), fixture.id(), html, fixture.url());
+            assertThat(metadata.title()).as(fixture.retailer().name()).isEqualTo("Target product");
+            assertThat(metadata.finalPrice()).as(fixture.retailer().name()).isEqualByComparingTo("1234.50");
+            assertThat(metadata.initialPrice()).as(fixture.retailer().name()).isEqualByComparingTo("1999.00");
+            assertThat(metadata.currency()).as(fixture.retailer().name()).isEqualTo("INR");
+            assertThat(metadata.imageUrl()).as(fixture.retailer().name()).isEqualTo("https://cdn.example.test/target.jpg");
+            assertThat(metadata.availability()).as(fixture.retailer().name()).isEqualTo("IN_STOCK");
+        }
+    }
+
+    @Test
+    void mapsAjioVariantPriceAndRatingsFromMatchingProductOfferWithoutUsingMrpAsSellingPrice() {
+        String html = """
+            <script type="application/ld+json">{"@type":"Product","sku":"442466815_blue","name":"U.S. Polo Assn. Shirt","image":"https://cdn.example.test/shirt-blue.jpg","offers":{"price":"3199.00","highPrice":"5999.00","priceCurrency":"INR","availability":"https://schema.org/InStock"},"aggregateRating":{"ratingValue":"4.1","reviewCount":"27"}}</script>
+            """;
+
+        var metadata = extractor.extract(Retailer.AJIO, "442466815", html,
+            "https://www.ajio.com/u-s-polo-assn-men-tailored-fit-shirt-with-logo-embroidery/p/442466815_blue");
+
+        assertThat(metadata.title()).isEqualTo("U.S. Polo Assn. Shirt");
+        assertThat(metadata.imageUrl()).isEqualTo("https://cdn.example.test/shirt-blue.jpg");
+        assertThat(metadata.finalPrice()).isEqualByComparingTo("3199.00");
+        assertThat(metadata.initialPrice()).isEqualByComparingTo("5999.00");
+        assertThat(metadata.rating()).isEqualByComparingTo("4.1");
+        assertThat(metadata.reviewsCount()).isEqualTo(27L);
+        assertThat(metadata.availability()).isEqualTo("IN_STOCK");
+    }
 }

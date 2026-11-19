@@ -40,9 +40,12 @@ class SavedProductMigrationIntegrationTest {
             "select count(*) from pg_constraint where conname = 'uk_saved_products_user_asin'", Integer.class);
         Integer foreignKeyCount = jdbcTemplate.queryForObject(
             "select count(*) from pg_constraint where conname = 'fk_saved_products_user'", Integer.class);
+        Integer variantUniqueConstraintCount = jdbcTemplate.queryForObject(
+            "select count(*) from pg_constraint where conname = 'uk_saved_products_user_retailer_product_variant'", Integer.class);
 
         assertThat(tableCount).isEqualTo(1);
         assertThat(uniqueConstraintCount).isEqualTo(1);
         assertThat(foreignKeyCount).isEqualTo(1);
+        assertThat(variantUniqueConstraintCount).isEqualTo(1);
     }
 }

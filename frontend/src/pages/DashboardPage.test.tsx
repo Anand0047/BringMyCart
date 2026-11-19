@@ -48,3 +48,33 @@ test('accepts a Myntra product URL through the existing save form', async () => 
   await userEvent.click(screen.getByRole('button', { name: /save product/i }));
   await waitFor(() => expect(api.save).toHaveBeenCalledWith('https://www.myntra.com/shirts/brand/12345678/buy'));
 });
+
+test.each([
+  'https://www.croma.com/haier-m80f-190-cm-75-inch-3-star-4k-ultra-hd-mini-led-smart-google-tv-with-google-assistant-supported-2025-model-/p/319323',
+  'https://www.ajio.com/u-s-polo-assn-men-tailored-fit-shirt-with-logo-embroidery/p/442466815_blue',
+])('submits the supplied retailer URL unchanged through the dashboard API: %s', async (url) => {
+  api.list.mockResolvedValue({ content: [], page: 0, size: 20, totalElements: 0, totalPages: 0, first: true, last: true });
+  render(<MemoryRouter><DashboardPage /></MemoryRouter>);
+  const input = screen.getByPlaceholderText('Paste a supported product URL');
+  await userEvent.type(input, url);
+  await userEvent.click(screen.getByRole('button', { name: /save product/i }));
+  await waitFor(() => expect(api.save).toHaveBeenCalledWith(url));
+});
+
+test('reports duplicate saves as already saved instead of a generic failure', async () => {
+  api.save.mockRejectedValue({ isAxiosError: true, response: { status: 409, data: { code: 'duplicate_saved_product' } } });
+  render(<MemoryRouter><DashboardPage /></MemoryRouter>);
+  await userEvent.type(screen.getByPlaceholderText('Paste a supported product URL'), 'https://www.croma.com/tv/p/319323');
+  await userEvent.click(screen.getByRole('button', { name: /save product/i }));
+  expect(await screen.findByRole('status')).toHaveTextContent(/already in your saved products/i);
+});
+
+test('retains the pasted URL after a save request fails so it can be corrected or retried', async () => {
+  api.save.mockRejectedValue(new Error('network failed'));
+  render(<MemoryRouter><DashboardPage /></MemoryRouter>);
+  const input = screen.getByPlaceholderText('Paste a supported product URL');
+  await userEvent.type(input, 'https://www.croma.com/tv/p/319323');
+  await userEvent.click(screen.getByRole('button', { name: /save product/i }));
+  expect(await screen.findByRole('alert')).toBeInTheDocument();
+  expect(input).toHaveValue('https://www.croma.com/tv/p/319323');
+});

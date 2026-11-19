@@ -1,1 +1,36 @@
-{"manifest_version":3,"name":"BringMyCart Product Saver","version":"0.1.0","description":"Save supported Amazon India, Flipkart, and Myntra product pages to BringMyCart.","permissions":["identity","storage","activeTab"],"action":{"default_title":"BringMyCart","default_popup":"popup.html"},"background":{"service_worker":"background.js","type":"module"},"content_scripts":[{"matches":["https://amazon.in/*","https://www.amazon.in/*","https://flipkart.com/*","https://www.flipkart.com/*","https://myntra.com/*","https://www.myntra.com/*"],"js":["content.js"],"run_at":"document_idle"}],"host_permissions":["https://amazon.in/*","https://www.amazon.in/*","https://flipkart.com/*","https://www.flipkart.com/*","https://myntra.com/*","https://www.myntra.com/*","http://localhost:5173/*","http://localhost:8080/*"],"externally_connectable":{"matches":["http://localhost:5173/*"]},"incognito":"not_allowed"}
+{
+  "manifest_version": 3,
+  "name": "BringMyCart Product Saver",
+  "version": "0.1.0",
+  "description": "Save supported product pages from eight Indian retailers to BringMyCart.",
+  "permissions": ["identity", "storage", "activeTab"],
+  "action": { "default_title": "BringMyCart", "default_popup": "popup.html" },
+  "background": { "service_worker": "background.js", "type": "module" },
+  "content_scripts": [{
+    "matches": [
+      "https://amazon.in/*", "https://www.amazon.in/*",
+      "https://flipkart.com/*", "https://www.flipkart.com/*",
+      "https://myntra.com/*", "https://www.myntra.com/*",
+      "https://meesho.com/*", "https://www.meesho.com/*",
+      "https://ajio.com/*", "https://www.ajio.com/*",
+      "https://nykaafashion.com/*", "https://www.nykaafashion.com/*",
+      "https://nykaa.com/*", "https://www.nykaa.com/*",
+      "https://croma.com/*", "https://www.croma.com/*"
+    ],
+    "js": ["content.js"],
+    "run_at": "document_idle"
+  }],
+  "host_permissions": [
+    "https://amazon.in/*", "https://www.amazon.in/*",
+    "https://flipkart.com/*", "https://www.flipkart.com/*",
+    "https://myntra.com/*", "https://www.myntra.com/*",
+    "https://meesho.com/*", "https://www.meesho.com/*",
+    "https://ajio.com/*", "https://www.ajio.com/*",
+    "https://nykaafashion.com/*", "https://www.nykaafashion.com/*",
+    "https://nykaa.com/*", "https://www.nykaa.com/*",
+    "https://croma.com/*", "https://www.croma.com/*",
+    "http://localhost:5173/*", "http://localhost:8080/*"
+  ],
+  "externally_connectable": { "matches": ["http://localhost:5173/*"] },
+  "incognito": "not_allowed"
+}

@@ -32,9 +32,9 @@ public class RetailerHtmlMetadataExtractor {
 
     public ProductMetadata extract(Retailer retailer, String productId, String html, String pageUrl) {
         Document doc = Jsoup.parse(html, pageUrl);
-        JsonNode product = findProduct(doc);
-        String returnedId = firstText(product, "sku", "productID", "productId");
-        if (returnedId != null && !returnedId.equalsIgnoreCase(productId)) {
+        JsonNode product = findProduct(doc, productId);
+        String returnedId = firstText(product, "sku", "skuId", "productID", "productId", "mpn");
+        if (returnedId != null && !matchesProductId(returnedId, productId)) {
             throw new IllegalArgumentException("Structured product identifier did not match the requested item");
         }
         String title = text(product, "name");
@@ -53,12 +53,14 @@ public class RetailerHtmlMetadataExtractor {
         BigDecimal price = money(firstText(offers, "price", "lowPrice", "salePrice"));
         String amount = meta(doc, "product:price:amount");
         if (price == null) price = money(amount);
+        if (price == null) price = money(metaContent(doc, "itemprop", "price"));
         if (price == null) price = money(retailerPrice(doc, retailer));
         BigDecimal original = money(firstText(offers, "highPrice", "listPrice", "retailPrice"));
         BigDecimal rating = decimal(firstText(first(product.get("aggregateRating")), "ratingValue"), BigDecimal.ZERO, BigDecimal.valueOf(5));
         Long reviews = longValue(firstText(first(product.get("aggregateRating")), "reviewCount", "ratingCount"));
         String availability = availability(firstText(offers, "availability"));
         if (availability == null) availability = availability(meta(doc, "product:availability"));
+        if (availability == null) availability = availability(metaContent(doc, "itemprop", "availability"));
         if (availability == null) availability = "UNKNOWN";
         String brand = text(first(product.get("brand")), "name");
         if (brand == null) brand = scalar(product.get("brand"));
@@ -71,6 +73,7 @@ public class RetailerHtmlMetadataExtractor {
         List<String> features = features(product.get("additionalProperty"));
         JsonNode specs = specifications(product.get("additionalProperty"));
         String currency = firstText(offers, "priceCurrency");
+        if (currency == null) currency = meta(doc, "product:price:currency");
         if (currency == null && price != null) currency = "INR";
 
         return new ProductMetadata(null, null, clean(title), clean(brand), image, original, price,
@@ -78,14 +81,14 @@ public class RetailerHtmlMetadataExtractor {
             clean(description), images, features, categories, specs, text(product, "manufacturer"), "SCRAPEDO");
     }
 
-    private JsonNode findProduct(Document doc) {
+    private JsonNode findProduct(Document doc, String requestedId) {
+        List<JsonNode> products = new ArrayList<>();
         for (Element script : doc.select("script[type=application/ld+json]")) {
             String raw = script.data();
             if (raw.length() > 256_000) continue;
             try {
                 JsonNode root = mapper.readTree(raw);
-                JsonNode found = findProductNode(root);
-                if (found != null) return found;
+                collectProductNodes(root, products);
             } catch (Exception strictParseFailure) {
                 // Some Myntra Product JSON-LD embeds review text with literal line breaks inside a
                 // quoted JSON string. Retry only with Jackson's unescaped-control-character feature;
@@ -94,35 +97,47 @@ public class RetailerHtmlMetadataExtractor {
                     JsonNode root = mapper.reader()
                         .with(JsonReadFeature.ALLOW_UNESCAPED_CONTROL_CHARS.mappedFeature())
                         .readTree(raw);
-                    JsonNode found = findProductNode(root);
-                    if (found != null) return found;
+                    collectProductNodes(root, products);
                 } catch (Exception ignored) {
                     // One malformed JSON-LD block must not discard other metadata sources.
                 }
             }
         }
-        return mapper.createObjectNode();
+        for (JsonNode candidate : products) {
+            String candidateId = firstText(candidate, "sku", "skuId", "productID", "productId", "mpn");
+            if (candidateId != null && matchesProductId(candidateId, requestedId)) return candidate;
+        }
+        return products.size() == 1 && firstText(products.getFirst(), "sku", "skuId", "productID", "productId", "mpn") == null
+            ? products.getFirst() : mapper.createObjectNode();
     }
 
-    private JsonNode findProductNode(JsonNode node) {
-        if (node == null) return null;
-        if (node.isArray()) for (JsonNode item : node) { JsonNode found = findProductNode(item); if (found != null) return found; }
+    private void collectProductNodes(JsonNode node, List<JsonNode> products) {
+        if (node == null) return;
+        if (node.isArray()) { node.forEach(item -> collectProductNodes(item, products)); return; }
         if (node.isObject()) {
             JsonNode typeNode = node.get("@type");
             String type = scalar(typeNode);
             if ("Product".equalsIgnoreCase(type) || typeNode != null && typeNode.isArray()
                 && java.util.stream.StreamSupport.stream(typeNode.spliterator(), false)
-                    .map(this::scalar).anyMatch("Product"::equalsIgnoreCase)) return node;
-            JsonNode graph = findProductNode(node.get("@graph"));
-            if (graph != null) return graph;
+                    .map(this::scalar).anyMatch("Product"::equalsIgnoreCase)) products.add(node);
+            node.fields().forEachRemaining(entry -> {
+                if (entry.getValue().isContainerNode()) collectProductNodes(entry.getValue(), products);
+            });
         }
-        return null;
+    }
+
+    private boolean matchesProductId(String candidate, String requested) {
+        return candidate.equalsIgnoreCase(requested)
+            || candidate.regionMatches(true, 0, requested + "_", 0, requested.length() + 1);
     }
 
     private List<String> jsonImages(JsonNode node) {
         Set<String> values = new LinkedHashSet<>();
         if (node != null) {
             if (node.isArray()) node.forEach(item -> addUrl(values, scalar(item), null));
+            else if (node.isObject()) {
+                addUrl(values, firstText(node, "url", "contentUrl"), null);
+            }
             else addUrl(values, scalar(node), null);
         }
         return new ArrayList<>(values);
@@ -182,6 +197,11 @@ public class RetailerHtmlMetadataExtractor {
 
     private String meta(Document doc, String property) {
         Element element = doc.selectFirst("meta[property=\"" + property + "\"]");
+        return element == null ? null : element.attr("content");
+    }
+
+    private String metaContent(Document doc, String attribute, String value) {
+        Element element = doc.selectFirst("meta[" + attribute + "=" + value + "][content]");
         return element == null ? null : element.attr("content");
     }
 
